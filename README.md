@@ -19,7 +19,7 @@ A SLeeLa-native source port of the local media-organizing workflow from Java.Ima
 - src/: SLeeLa domain model, configuration, date policy, naming, safety, and run-session logic.
 - src/ui/ImagingWindow.sleela: native SleelaUI desktop workspace.
 - native/imaging.cpp: standalone C++17 filesystem companion.
-- native/imaging_provider.cpp: shared native C ABI filesystem provider, ABI version 2.
+- native/imaging_provider.cpp: shared native C ABI filesystem provider, ABI version 3.
 - native/imaging_provider.h: stable C-compatible interface.
 - native/imaging_host_adapter.cpp/.h: explicit-path, cross-platform dynamic host adapter for the provider.
 - native/HOST_ADAPTER_ABI.md: explicit-path host loader and VM-mediated process-bridge contract.
@@ -37,9 +37,9 @@ A SLeeLa-native source port of the local media-organizing workflow from Java.Ima
 
 ## Current implementation status
 
-The native provider is a shared C ABI library (ABI v2) with a synthetic-fixture contract test. The explicit-path host adapter validates the provider ABI and delegates preview/apply while preserving provider-side authorization. The desktop UI invokes `sleela-imaging-bridge` through the SLeeLa VM OS process built-in (`osRun`). This is a VM-mediated process boundary: the SLeeLa program runs in the SLeeLa runtime, while the filesystem provider is loaded by the child bridge process. It is deliberately not represented as an in-process VM opcode or native pointer binding. No provider pointer, library handle, file descriptor, or native address crosses into SLeeLa values. `ImagingFileSystem.sleela` remains a design facade with unbound capability placeholders; the active UI calls the process bridge directly.
+The native provider is a shared C ABI library (ABI v3) with a synthetic-fixture contract test. The explicit-path host adapter validates the provider ABI and delegates preview/apply while preserving provider-side authorization. The desktop UI invokes `sleela-imaging-bridge` through the SLeeLa VM OS process built-in (`osRun`). This is a VM-mediated process boundary: the SLeeLa program runs in the SLeeLa runtime, while the filesystem provider is loaded by the child bridge process. It is deliberately not represented as an in-process VM opcode or native pointer binding. No provider pointer, library handle, file descriptor, or native address crosses into SLeeLa values. `ImagingFileSystem.sleela` remains a design facade with unbound capability placeholders; the active UI calls the process bridge directly.
 
-Reviewed plans bind each eligible source to its preview-time SHA-256 digest in addition to path, size, and modification time. Apply rejects same-size/same-timestamp content changes and verifies the staged copy against the reviewed digest. Review manifests and reports are created exclusively and published without replacing any existing file. The provider still uses filesystem modification time only; embedded EXIF/QuickTime capture-time parsing, race-free descriptor-relative no-follow operations, asynchronous cancellation, and Windows/macOS runtime evidence remain open engineering work. See docs/FILESYSTEM_PROVIDER.md and validation/QUALITY_GATES.md.
+Reviewed plans bind each eligible source to its preview-time SHA-256 digest in addition to path, size, and modification time. Apply rejects same-size/same-timestamp content changes and verifies the staged copy against the reviewed digest. Review manifests and reports are created exclusively and published without replacing any existing file. The provider now prefers embedded JPEG/TIFF EXIF and QuickTime MOV/MP4/M4V dates, records timestamp provenance in ABI v3 and reviewed-plan format v3, and falls back to filesystem modification time when metadata is unavailable or malformed. Vendor-specific metadata, HEIF/HEIC item metadata, race-free descriptor-relative no-follow operations, asynchronous cancellation, and Windows/macOS runtime evidence remain open engineering work. See docs/FILESYSTEM_PROVIDER.md and validation/QUALITY_GATES.md.
 
 ## Native companion build
 
