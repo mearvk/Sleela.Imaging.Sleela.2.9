@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(SLeeLaImaging VERSION 2.9.0 LANGUAGES CXX)
 
-find_package(OpenSSL REQUIRED COMPONENTS Crypto)
-
 add_executable(sleela-imaging native/imaging.cpp)
 target_compile_features(sleela-imaging PRIVATE cxx_std_17)
 set_target_properties(sleela-imaging PROPERTIES CXX_EXTENSIONS OFF)
@@ -15,7 +13,6 @@ endif()
 add_library(sleela_imaging_provider SHARED native/imaging_provider.cpp)
 target_include_directories(sleela_imaging_provider PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/native)
 target_compile_features(sleela_imaging_provider PRIVATE cxx_std_17)
-target_link_libraries(sleela_imaging_provider PRIVATE OpenSSL::Crypto)
 target_compile_definitions(sleela_imaging_provider PRIVATE SLI_PROVIDER_BUILD)
 set_target_properties(sleela_imaging_provider PROPERTIES CXX_EXTENSIONS OFF)
 if(MSVC)
