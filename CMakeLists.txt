@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
 project(SLeeLaImaging VERSION 2.9.0 LANGUAGES CXX)
 
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
+
 add_executable(sleela-imaging native/imaging.cpp)
 target_compile_features(sleela-imaging PRIVATE cxx_std_17)
 set_target_properties(sleela-imaging PROPERTIES CXX_EXTENSIONS OFF)
@@ -10,7 +12,22 @@ else()
   target_compile_options(sleela-imaging PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
+add_library(sleela_imaging_provider SHARED native/imaging_provider.cpp)
+target_include_directories(sleela_imaging_provider PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/native)
+target_compile_features(sleela_imaging_provider PRIVATE cxx_std_17)
+target_link_libraries(sleela_imaging_provider PRIVATE OpenSSL::Crypto)
+set_target_properties(sleela_imaging_provider PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+  target_compile_options(sleela_imaging_provider PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(sleela_imaging_provider PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 enable_testing()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 add_test(NAME imaging-integration
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_imaging.py $<TARGET_FILE:sleela-imaging>)
+add_executable(imaging-provider-tests tests/test_provider.cpp)
+target_link_libraries(imaging-provider-tests PRIVATE sleela_imaging_provider)
+target_compile_features(imaging-provider-tests PRIVATE cxx_std_17)
+add_test(NAME imaging-provider-contract COMMAND imaging-provider-tests)

@@ -1,3 +1,3 @@
 # Native provider ABI
 
-The native provider implementation is pending. The required interface is specified in docs/FILESYSTEM_PROVIDER.md. Do not mark the SLeeLa bridge as bound until implementation and runtime tests are complete.
+Implemented in native/imaging_provider.cpp and declared in native/imaging_provider.h (ABI v1). CMake builds the shared library and a synthetic-fixture contract test. The provider is not yet registered with the SLeeLa VM; do not mark the VM bridge bound until a host adapter and runtime integration test exist.
