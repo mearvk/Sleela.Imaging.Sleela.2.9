@@ -2,7 +2,7 @@
 ## SLeeLa Imaging 2.9 — security-reviewed implementation baseline
 
 **Record class:** Protected engineering decision / change-controlled  
-**Status:** Approved design baseline; implementation remains partially gated  
+**Status:** Proposed final baseline; implementation and independent review remain gated  
 **Reference:** https://github.com/mearvk/Java.Imaging.Java.21  
 **Target:** SLeeLa syntax 2.9 and the existing SleelaUI native toolkit
 
@@ -73,7 +73,7 @@ The Java organizer scans only the immediate source directory in its visible entr
 | Filesystem operations | src/ImagingFileSystem.sleela contract | OS/VM provider; currently unbound |
 | Existing native organizer | native/imaging.cpp | Standalone C++ companion, not a VM binding |
 
-The UI uses the documented SLeeLa ui* built-ins and the SleelaUI C ABI. It is not a mock page. The filesystem contract remains explicitly unbound: no SLeeLa source method may pretend that it enumerated or changed the user's files.
+The UI uses the documented SLeeLa ui* built-ins and the SleelaUI C ABI. The filesystem contract remains explicitly unbound: no SLeeLa source method may pretend that it enumerated or changed the user's files.
 
 ## 4. Data and transaction rules
 
@@ -103,6 +103,7 @@ With the current repository state, Preview reports that the filesystem VM bridge
 |---|---|---|
 | SLeeLa source syntax | Compile all new .sleela files with the target 2.9 compiler | NOT RUN |
 | SleelaUI rendering | Run the window on Linux, Windows 10+, and macOS | NOT RUN |
+| Window close lifecycle | Verify window-manager close and explicit Quit behavior | NOT RUN |
 | Filesystem VM provider | Bound provider with canonicalization and disjoint-root tests | BLOCKED / unbound |
 | Metadata support | Format-specific parser and malformed/real fixture suites | BLOCKED / not implemented |
 | Preview determinism | Same source/config snapshot yields same plan | NOT RUN |

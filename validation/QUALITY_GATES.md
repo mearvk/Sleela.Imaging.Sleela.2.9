@@ -9,6 +9,7 @@ A gate is PASS only when its evidence is recorded for the exact commit under rev
 | Native integration test | CTest output on synthetic fixtures | NOT RUN in this coding pass |
 | SLeeLa source compile | Compiler version and successful source check/compile for all src/*.sleela, src/ui/*.sleela, and tests | NOT RUN |
 | SleelaUI render | Native window and interaction check on each target OS | NOT RUN |
+| Window close lifecycle | Window-manager close and explicit Quit tests | NOT RUN |
 | Filesystem VM provider | Bound implementation and contract tests | BLOCKED: source contract remains unbound |
 | Canonical path safety | Symlink, traversal, overlap, and alias tests | BLOCKED: requires provider |
 | Dry-run integration | Before/after filesystem comparison | NOT RUN for exact reviewed commit |

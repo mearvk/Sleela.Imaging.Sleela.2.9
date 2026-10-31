@@ -39,3 +39,5 @@ The native toolkit owns rendering and input. SLeeLa owns the meaning of each con
 ## Current limitation
 
 src/ImagingFileSystem.sleela is a contract only. Its operations return BRIDGE_REQUIRED or false, and it cannot be marked bound from application code. Consequently the current Preview action deliberately does not enumerate files and Apply cannot be enabled. The next implementation step is a real SLeeLa VM/OS filesystem provider with canonical path handling, enumeration, metadata reads, verified copy, and atomic no-overwrite publication.
+
+The native window-manager close lifecycle has not yet been exercised. Until that runtime check is completed, use the explicit Quit control to close the application.
