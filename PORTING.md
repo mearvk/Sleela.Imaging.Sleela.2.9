@@ -9,3 +9,16 @@ Date precedence: embedded capture timestamp, positive filesystem modification ti
 Operation is two-phase: plan and report; after explicit confirmation, copy to a temporary destination, verify byte count and digest, then atomically publish. Keep source intact. Cleanup is separate future work.
 
 ImagingFileSystem defines the OS/VM boundary. Bind directory enumeration, canonical paths, metadata reads, copy/verification, atomic publication, and report writing. Until bound, this is source-level code plus integration contract, not a tested binary.
+
+## Quality and traceability
+
+- `conversion/CONVERSION_MANIFEST.json` records source-to-destination mappings and conversion status.
+- `conversion/BEHAVIOR_MAPPING.md` distinguishes preserved behavior from unfinished work.
+- `conversion/DECISIONS.md` records safety and design decisions.
+- `conversion/KNOWN_DIFFERENCES.md` records known gaps.
+- `docs/TRANSACTION_MODEL.md` defines the non-destructive copy/verify/publish sequence.
+- `docs/FORMAT_SUPPORT.md` distinguishes extension recognition from tested metadata extraction.
+- `tests/` contains behavioral and integration case definitions.
+- `validation/` contains release gates, a checklist, and a cross-platform evidence matrix.
+
+These documents define requirements; they do not constitute passing tests. Compilation, runtime behavior, filesystem integration, and platform compatibility remain unverified until evidence is recorded for the exact release commit.
