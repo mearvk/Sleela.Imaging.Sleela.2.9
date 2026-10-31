@@ -62,10 +62,10 @@ bool write_manifest(const std::string &path, const std::string &data) {
 std::string display_path(const char *value) {
     std::string out;
     for (const unsigned char *p = reinterpret_cast<const unsigned char *>(value); *p; ++p) {
-        if (*p == '\\n') out += "\\\\n";
-        else if (*p == '\\r') out += "\\\\r";
-        else if (*p == '\\t') out += "\\\\t";
-        else if (*p == '\\\\') out += "\\\\\\\\";
+        if (*p == '\n') out += "\\n";
+        else if (*p == '\r') out += "\\r";
+        else if (*p == '\t') out += "\\t";
+        else if (*p == '\\') out += "\\\\";
         else out.push_back(static_cast<char>(*p));
     }
     return out;
@@ -74,15 +74,15 @@ bool write_review_text(const std::string &path, const sli_result &result,
                        const std::vector<sli_item> &items, uint64_t count) {
     std::ofstream file(path + ".review.txt", std::ios::binary | std::ios::trunc);
     if (!file) return false;
-    file << "SLeeLa Imaging review report\\n"
-         << "Files seen: " << result.files_seen << "\\nEligible: " << result.eligible
-         << "\\nUnknown timestamp: " << result.unknown_timestamp
-         << "\\nDestination collisions: " << result.collisions
-         << "\\nPreview failures: " << result.failed << "\\n\\n";
+    file << "SLeeLa Imaging review report\n"
+         << "Files seen: " << result.files_seen << "\nEligible: " << result.eligible
+         << "\nUnknown timestamp: " << result.unknown_timestamp
+         << "\nDestination collisions: " << result.collisions
+         << "\nPreview failures: " << result.failed << "\n\n";
     for (uint64_t i = 0; i < count; ++i) {
         const auto &item = items[static_cast<size_t>(i)];
         file << display_path(item.source) << " -> " << display_path(item.destination)
-             << " [" << item.state << ", " << item.bytes << " bytes]\\n";
+             << " [" << item.state << ", " << item.bytes << " bytes]\n";
     }
     return static_cast<bool>(file);
 }
