@@ -8,12 +8,13 @@
 4. **Planning:** candidate records with proposed destination, date provenance, and explicit state.
 5. **Session policy:** root validation, preview freshness, confirmation, no-overwrite, and source-preservation rules.
 6. **SLeeLa UI:** native SleelaUI window and controls; SLeeLa owns event meaning and workflow state.
-7. **Filesystem provider:** OS-specific enumeration, canonicalization, metadata reads, verified copy, atomic no-overwrite publication, and local report output.
-8. **Reporting:** machine-readable summary and per-file outcomes with path redaction.
+7. **SLeeLa process bridge:** `ImagingWindow.sleela` invokes `sleela-imaging-bridge` through the VM's `osRun` / `OP_OS_RUN` process service.
+8. **Native host and filesystem provider:** explicit-path dynamic loading, canonical-root validation, enumeration, preview-time digest capture, verified copy, and atomic no-overwrite publication.
+9. **Reporting:** immutable machine-readable review manifest and local per-file report.
 
 ## Dependency direction
 
-Domain logic must not call platform APIs directly. It calls the filesystem contract. The native provider implements that contract for Linux, Windows 10+, and macOS. UI code calls SLeeLa session methods and never calls filesystem functions directly.
+The active UI validates paths and constructs a restricted, quoted bridge command; it invokes that command through SLeeLa `osRun`. The bridge loads the host adapter by explicit library path, and the adapter loads the provider by explicit path. Native filesystem operations remain in the provider process. The `ImagingFileSystem.sleela` facade is not yet wired to those native calls.
 
 ## State progression
 
@@ -23,8 +24,8 @@ Any error transitions to a recorded failure state. A file must not be reported a
 
 ## UI path
 
-src/ui/ImagingWindow.sleela uses the documented ui* built-ins to create a native SleelaUI window. The UI supports path entry, recursion, dry-run, digest verification, explicit confirmation, preview, and quit. Apply is disabled until the session reports every required gate satisfied.
+src/ui/ImagingWindow.sleela uses documented ui* built-ins to create a native SleelaUI window. Preview and Apply invoke the native bridge through `osRun`. Apply requires a successful preview, unchanged configuration and executable paths, SHA-256 enabled, Dry run disabled, and explicit confirmation. The bridge independently recomputes and compares the reviewed manifest.
 
 ## Current boundary
 
-The SLeeLa domain, policy, and UI source now exist. The filesystem contract remains unbound and deliberately fails closed. The native C++ organizer is a standalone companion executable, not a registered SLeeLa VM filesystem provider. The complete scan/preview/apply state machine is therefore not yet a released end-to-end feature.
+The active scan/preview/apply path is implemented as a VM-mediated process bridge: the SLeeLa UI calls `osRun`, the bridge calls the host adapter, and the adapter loads the native C ABI provider. This is not an in-process VM opcode binding; the SLeeLa `ImagingFileSystem` facade remains unbound. The provider still lacks embedded capture-time parsing and platform-hardening work, and the exact branch has not yet been built or tested. Do not describe the feature as release-verified until the SLeeLa source, bridge, provider, and cross-platform gates pass.
