@@ -13,7 +13,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define SLI_PROVIDER_ABI_VERSION 1u
+#define SLI_PROVIDER_ABI_VERSION 2u
 #define SLI_PATH_CAPACITY 4096u
 #define SLI_STATUS_CAPACITY 256u
 typedef struct sli_provider sli_provider;
@@ -28,6 +28,7 @@ typedef struct {
 } sli_result;
 typedef struct {
  char source[SLI_PATH_CAPACITY], destination[SLI_PATH_CAPACITY], state[32];
+ char sha256[65]; /* lowercase SHA-256 captured during preview; empty when disabled */
  uint64_t bytes;
  int64_t modified_time_ns;
 } sli_item;
