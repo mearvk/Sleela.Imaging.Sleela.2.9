@@ -1,45 +1,58 @@
 # SLeeLa VM integration
 
-The imaging provider is callable from an existing SLeeLa runtime without changing
-or rebuilding the VM. This integration uses the VM's existing OS process built-ins
-(`osRun` / `osSpawn`) as the boundary and keeps the native imaging ABI in a
-separate executable.
+The imaging application uses the existing SLeeLa VM process built-ins
+(`osRun` / `osSpawn`). No VM opcode, runtime rebuild, or native pointer
+crossing is required.
 
 ## Build outputs
 
 - `sleela_imaging_provider`: filesystem provider shared library
 - `sleela_imaging_host`: explicit-path dynamic provider loader and ABI adapter
-- `sleela-imaging-bridge`: command-line process adapter callable by SLeeLa
+- `sleela-imaging-bridge`: process adapter invoked by SLeeLa
 
-The bridge accepts six distinct filesystem roots and an explicit provider-library
-path. It does not search the process library path for the provider.
+The bridge requires an explicit provider-library path and six distinct,
+existing filesystem roots. It does not search the process library path.
 
-## Preview
+## Two-stage reviewed plan
 
-Invoke the bridge with `--provider`, `--source`, `--images`, `--mov`,
-`--mp4`, `--mpeg`, and `--avi`. Add `--recursive` to scan subdirectories.
-Without apply flags, the bridge is preview-only and does not change files.
+Preview is read-only and writes a deterministic review manifest:
 
-## Apply
+```sh
+sleela-imaging-bridge --provider PROVIDER --source SOURCE --images IMAGES \
+  --mov MOV --mp4 MP4 --mpeg MPEG --avi AVI --plan-file REVIEW.plan [--recursive]
+```
 
-Use `--apply --confirm` together in one invocation. The bridge opens the provider,
-creates a fresh preview, and applies that same process-local plan before closing
-the provider. Apply is rejected unless the provider accepts the explicit
-confirmation, SHA-256 verification is enabled, and its source revalidation and
-atomic no-overwrite publication checks succeed.
+The manifest records the six configured roots, scan options, summary counts,
+and every planned source/destination pair with byte count and modification
+timestamp. Path strings are hex-encoded in the manifest so unusual characters
+cannot change its record boundaries.
 
-Do not split preview and apply across separate bridge processes: the provider's
-preview authorization is deliberately process-local.
+Apply is a separate invocation:
+
+```sh
+sleela-imaging-bridge --provider PROVIDER --source SOURCE --images IMAGES \
+  --mov MOV --mp4 MP4 --mpeg MPEG --avi AVI --expect-plan REVIEW.plan \
+  --apply --confirm [--recursive]
+```
+
+The bridge reopens the provider, recomputes the current preview, and compares
+the complete deterministic manifest byte-for-byte with the reviewed file.
+Any changed root, option, file, destination, collision state, size, timestamp,
+or summary denies apply. Only after an exact match does it apply that same
+in-process plan. The provider independently revalidates each source, hashes
+the copy, and publishes without overwriting an existing destination.
+
+Keep the review manifest private to the local operation. Do not edit it. If
+anything changes, run Preview again and review the replacement manifest.
+The manifest is a comparison record, not a cryptographic signature or proof
+of who approved it; the GUI's explicit confirmation is still required.
 
 ## VM safety boundary
 
-SLeeLa source passes strings and receives an integer exit status through its
-existing OS bridge. No provider pointer, library handle, file descriptor, or
-native address is exposed to Sleela code. The process boundary also means the
-runtime itself does not acquire a new native dependency.
+SLeeLa source passes a command string to the existing OS process service and
+receives an integer exit status. No provider pointer, library handle, file
+descriptor, or native address is exposed to SLeeLa code. The process boundary
+does not add a native dependency to the VM.
 
-The current change adds the executable bridge and build target. The graphical
-`ImagingWindow` still needs its Preview and Apply event handlers wired to invoke
-this process with correctly quoted arguments before it can claim an operational
-GUI filesystem session. Until that wiring is complete, the GUI must continue to
-show the filesystem bridge as unbound and keep its Apply control disabled.
+The GUI must keep Apply disabled until a successful preview, an unchanged
+configuration, SHA-256 verification, and the user's explicit confirmation.
