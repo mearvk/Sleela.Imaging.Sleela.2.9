@@ -43,4 +43,4 @@ Reviewed plans bind each eligible source to its preview-time SHA-256 digest in a
 
 ## Native companion build
 
-See docs/NATIVE_BUILD.md for build instructions. The provider uses the same dependency-free SHA-256 implementation as the existing native engine. A successful native build does not prove SLeeLa source compilation or VM integration.
+See docs/NATIVE_BUILD.md for build instructions. The provider uses the same dependency-free SHA-256 implementation as the existing native engine. A successful native build does not prove SLeeLa source compilation or desktop UI runtime integration.
