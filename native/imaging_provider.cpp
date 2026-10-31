@@ -49,7 +49,7 @@ std::string sha256(const fs::path&p){std::ifstream f(p,std::ios::binary);if(!f)t
 struct sli_provider { std::vector<fs::path> roots; std::vector<Plan> plan; bool ready=false; bool digest=false; bool dry_run=true; };
 extern "C" {
 uint32_t sli_provider_abi_version(void){return SLI_PROVIDER_ABI_VERSION;}
-const char *sli_provider_version(void){return "1.0.0";}
+const char *sli_provider_version(void){return "2.0.0";}
 sli_provider *sli_provider_create(void){try{return new sli_provider();}catch(...){return nullptr;}}
 void sli_provider_destroy(sli_provider *p){delete p;}
 int32_t sli_provider_preview(sli_provider *p,const sli_config *c,sli_result *r,sli_item *out,uint64_t capacity,uint64_t *required){
