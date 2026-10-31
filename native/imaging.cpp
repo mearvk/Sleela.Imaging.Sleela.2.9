@@ -1,4 +1,5 @@
-/* SLeeLa Imaging 2.9: portable, non-destructive native filesystem engine. */\n#include "media_metadata.h"
+/* SLeeLa Imaging 2.9: portable, non-destructive native filesystem engine. */
+#include "media_metadata.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
