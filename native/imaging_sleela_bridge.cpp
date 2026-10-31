@@ -1,7 +1,9 @@
 #include "imaging_host_adapter.h"
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -11,16 +13,73 @@ bool copy_path(char *dst, const std::string &src) {
     std::memcpy(dst, src.c_str(), src.size() + 1);
     return true;
 }
+std::string hex(const std::string &value) {
+    static const char digits[] = "0123456789abcdef";
+    std::string out;
+    out.reserve(value.size() * 2);
+    for (unsigned char c : value) {
+        out.push_back(digits[c >> 4]);
+        out.push_back(digits[c & 15]);
+    }
+    return out;
+}
+std::string manifest(const sli_config &config, const sli_result &result,
+                     const std::vector<sli_item> &items, uint64_t count) {
+    std::ostringstream out;
+    out << "SLEE LA-IMAGING-PLAN-1\n";
+    out << "source=" << hex(config.source) << "\n";
+    out << "images=" << hex(config.images) << "\n";
+    out << "mov=" << hex(config.mov) << "\n";
+    out << "mp4=" << hex(config.mp4) << "\n";
+    out << "mpeg=" << hex(config.mpeg) << "\n";
+    out << "avi=" << hex(config.avi) << "\n";
+    out << "recursive=" << config.recursive << "\n";
+    out << "sha256=" << config.verify_sha256 << "\n";
+    out << "seen=" << result.files_seen << "\neligible=" << result.eligible
+        << "\nunknown_timestamp=" << result.unknown_timestamp
+        << "\ncollisions=" << result.collisions << "\nfailed=" << result.failed << "\n";
+    for (uint64_t i = 0; i < count; ++i) {
+        const auto &item = items[static_cast<size_t>(i)];
+        out << "item=" << hex(item.source) << "|" << hex(item.destination) << "|"
+            << hex(item.state) << "|" << item.bytes << "|" << item.modified_time_ns << "\n";
+    }
+    return out.str();
+}
+bool write_manifest(const std::string &path, const std::string &data) {
+    if (path.empty()) return false;
+    const std::string temporary = path + ".sleela-tmp";
+    {
+        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+        if (!file || !file.write(data.data(), static_cast<std::streamsize>(data.size()))) return false;
+    }
+    std::remove(path.c_str());
+    if (std::rename(temporary.c_str(), path.c_str()) != 0) {
+        std::remove(temporary.c_str());
+        return false;
+    }
+    return true;
+}
+bool read_manifest(const std::string &path, std::string &data) {
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return false;
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    if (!file.good() && !file.eof()) return false;
+    data = buffer.str();
+    return !data.empty();
+}
 void usage() {
     std::fprintf(stderr,
-        "Usage: sleela-imaging-bridge --provider PATH --source DIR --images DIR "
-        "--mov DIR --mp4 DIR --mpeg DIR --avi DIR [--recursive] [--apply --confirm]\n"
-        "Default mode is preview-only. Apply requires both --apply and --confirm.\n");
+        "Preview: sleela-imaging-bridge --provider PATH --source DIR --images DIR "
+        "--mov DIR --mp4 DIR --mpeg DIR --avi DIR --plan-file FILE [--recursive]\n"
+        "Apply:   sleela-imaging-bridge --provider PATH --source DIR --images DIR "
+        "--mov DIR --mp4 DIR --mpeg DIR --avi DIR --expect-plan FILE --apply --confirm [--recursive]\n"
+        "Apply recomputes the plan and requires byte-for-byte equality with the reviewed manifest.\n");
 }
 }
 
 int main(int argc, char **argv) {
-    std::string provider, source, images, mov, mp4, mpeg, avi;
+    std::string provider, source, images, mov, mp4, mpeg, avi, plan_file, expect_plan;
     bool recursive = false, apply = false, confirmed = false;
     for (int i = 1; i < argc; ++i) {
         const std::string arg(argv[i]);
@@ -36,12 +95,17 @@ int main(int argc, char **argv) {
         else if (arg == "--mp4") { if (!value(mp4)) { usage(); return 2; } }
         else if (arg == "--mpeg") { if (!value(mpeg)) { usage(); return 2; } }
         else if (arg == "--avi") { if (!value(avi)) { usage(); return 2; } }
+        else if (arg == "--plan-file") { if (!value(plan_file)) { usage(); return 2; } }
+        else if (arg == "--expect-plan") { if (!value(expect_plan)) { usage(); return 2; } }
         else if (arg == "--recursive") recursive = true;
         else if (arg == "--apply") apply = true;
         else if (arg == "--confirm") confirmed = true;
         else { usage(); return 2; }
     }
-    if (provider.empty() || (apply != confirmed)) { usage(); return 2; }
+    if (provider.empty() || (apply != confirmed) ||
+        (apply ? (!plan_file.empty() || expect_plan.empty()) : (plan_file.empty() || !expect_plan.empty()))) {
+        usage(); return 2;
+    }
 
     sli_config config{};
     if (!copy_path(config.source, source) || !copy_path(config.images, images) ||
@@ -67,40 +131,53 @@ int main(int argc, char **argv) {
     int32_t rc = sli_host_preview(host, &config, &result, nullptr, 0, &required);
     if (rc < 0 || required > 1000000u) {
         std::fprintf(stderr, "ERROR: preview sizing failed (status=%d, required=%llu).\n",
-                     (int)rc, (unsigned long long)required);
+                     static_cast<int>(rc), static_cast<unsigned long long>(required));
         sli_host_close(host);
         return 4;
     }
-    // Keep a non-null output buffer even for an empty plan: the provider marks
-    // the preview ready only when the caller supplies an output buffer.
-    std::vector<sli_item> items((size_t)(required ? required : 1u));
+    std::vector<sli_item> items(static_cast<size_t>(required ? required : 1u));
     rc = sli_host_preview(host, &config, &result, items.data(),
-                          (uint64_t)items.size(), &required);
+                          static_cast<uint64_t>(items.size()), &required);
     if (rc < 0) {
-        std::fprintf(stderr, "ERROR: preview failed (status=%d): %s\n", (int)rc, result.status);
+        std::fprintf(stderr, "ERROR: preview failed (status=%d): %s\n", static_cast<int>(rc), result.status);
         sli_host_close(host);
         return 4;
     }
+    const std::string current_manifest = manifest(config, result, items, required);
     std::printf("PREVIEW %s\nseen=%llu eligible=%llu unknown_timestamp=%llu collisions=%llu failed=%llu\n",
-        result.status, (unsigned long long)result.files_seen, (unsigned long long)result.eligible,
-        (unsigned long long)result.unknown_timestamp, (unsigned long long)result.collisions,
-        (unsigned long long)result.failed);
+        result.status, static_cast<unsigned long long>(result.files_seen),
+        static_cast<unsigned long long>(result.eligible),
+        static_cast<unsigned long long>(result.unknown_timestamp),
+        static_cast<unsigned long long>(result.collisions),
+        static_cast<unsigned long long>(result.failed));
     for (uint64_t i = 0; i < required; ++i) {
-        const auto &item = items[(size_t)i];
-        std::printf("%s -> %s [%s, %llu bytes]
-", item.source, item.destination,
-                    item.state, (unsigned long long)item.bytes);
+        const auto &item = items[static_cast<size_t>(i)];
+        std::printf("%s -> %s [%s, %llu bytes]\n", item.source, item.destination,
+                    item.state, static_cast<unsigned long long>(item.bytes));
     }
 
-    if (apply) {
-        sli_result applied{};
-        rc = sli_host_apply(host, confirmed ? 1u : 0u, &applied);
-        std::printf("APPLY %s (status=%d, published=%llu, failed=%llu)\n", applied.status,
-                    (int)rc, (unsigned long long)applied.published, (unsigned long long)applied.failed);
+    if (!apply) {
+        if (!write_manifest(plan_file, current_manifest)) {
+            std::fprintf(stderr, "ERROR: could not write review manifest: %s\n", plan_file.c_str());
+            sli_host_close(host);
+            return 6;
+        }
+        std::printf("REVIEW MANIFEST: %s\nPREVIEW ONLY: no files were changed.\n", plan_file.c_str());
         sli_host_close(host);
-        return rc < 0 || applied.failed ? 5 : 0;
+        return 0;
     }
-    std::puts("PREVIEW ONLY: no files were changed. Re-run with --apply --confirm to authorize this exact plan.");
+
+    std::string reviewed_manifest;
+    if (!read_manifest(expect_plan, reviewed_manifest) || reviewed_manifest != current_manifest) {
+        std::fprintf(stderr, "DENIED: current filesystem plan differs from the reviewed manifest. Preview again.\n");
+        sli_host_close(host);
+        return 7;
+    }
+    sli_result applied{};
+    rc = sli_host_apply(host, 1u, &applied);
+    std::printf("APPLY %s (status=%d, published=%llu, failed=%llu)\n", applied.status,
+                static_cast<int>(rc), static_cast<unsigned long long>(applied.published),
+                static_cast<unsigned long long>(applied.failed));
     sli_host_close(host);
-    return 0;
+    return rc < 0 || applied.failed ? 5 : 0;
 }
