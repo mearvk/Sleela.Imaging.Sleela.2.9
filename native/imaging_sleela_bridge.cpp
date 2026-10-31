@@ -46,9 +46,17 @@ std::string manifest(const sli_config &config, const sli_result &result,
     }
     return out.str();
 }
+bool existing_file_has_header(const std::string &path, const std::string &header) {
+    std::ifstream existing(path, std::ios::binary);
+    if (!existing) return true;
+    std::string first_line;
+    return std::getline(existing, first_line) && first_line == header;
+}
 bool write_manifest(const std::string &path, const std::string &data) {
-    if (path.empty()) return false;
+    if (path.empty() || !existing_file_has_header(path, "SLEELA-IMAGING-PLAN-1")) return false;
     const std::string temporary = path + ".sleela-tmp";
+    std::ifstream stale_temporary(temporary, std::ios::binary);
+    if (stale_temporary) return false;
     {
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
         if (!file || !file.write(data.data(), static_cast<std::streamsize>(data.size()))) return false;
@@ -73,7 +81,9 @@ std::string display_path(const char *value) {
 }
 bool write_review_text(const std::string &path, const sli_result &result,
                        const std::vector<sli_item> &items, uint64_t count, const std::string &provider_path) {
-    std::ofstream file(path + ".review.txt", std::ios::binary | std::ios::trunc);
+    const std::string report_path = path + ".review.txt";
+    if (!existing_file_has_header(report_path, "SLeeLa Imaging review report")) return false;
+    std::ofstream file(report_path, std::ios::binary | std::ios::trunc);
     if (!file) return false;
     file << "SLeeLa Imaging review report\nProvider: " << display_path(provider_path.c_str()) << "\n"
          << "Files seen: " << result.files_seen << "\nEligible: " << result.eligible
