@@ -32,7 +32,7 @@ std::string hashFile(const fs::path&p){std::ifstream f(p,std::ios::binary);if(!f
 std::string lower(std::string s){for(char&c:s)if(c>='A'&&c<='Z')c=char(c-'A'+'a');return s;}
 std::string extOf(const fs::path&p){return lower(p.extension().string());}
 std::string category(const std::string&e){static const std::vector<std::string>i={".jpg",".jpeg",".heic",".png",".tiff",".tif",".bmp",".gif",".webp"},v={".mov",".mp4",".mpeg",".mpg",".avi",".m4v"};if(std::find(i.begin(),i.end(),e)!=i.end())return"image";if(std::find(v.begin(),v.end(),e)!=v.end())return"video";return"unsupported";}
-std::string stamp_system_ns(int64_t ns){auto st=std::chrono::system_clock::time_point(std::chrono::nanoseconds(ns));auto t=std::chrono::system_clock::to_time_t(st);if(t<=0)return{};std::tm tm{};
+std::string stamp_system_ns(int64_t ns){auto st=std::chrono::system_clock::time_point(std::chrono::nanoseconds(ns));auto t=std::chrono::system_clock::to_time_t(st);std::tm tm{};
 #ifdef _WIN32
  localtime_s(&tm,&t);
 #else
