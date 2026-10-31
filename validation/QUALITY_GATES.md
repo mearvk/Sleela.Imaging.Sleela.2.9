@@ -23,7 +23,7 @@ A gate is PASS only when its evidence is recorded for the exact commit under rev
 | Linux native platform | OS/filesystem test report | NOT RUN |
 | Windows 10+ native platform | OS/filesystem test report | NOT RUN |
 | macOS native platform | OS/filesystem test report | NOT RUN |
-| Embedded metadata | JPEG/TIFF EXIF and QuickTime synthetic fixture evidence | IMPLEMENTED IN SOURCE; TEST NOT RUN |
+| Embedded metadata | JPEG/TIFF EXIF and QuickTime synthetic fixtures; real camera fixtures, fuzzing, and parser security review | IMPLEMENTED IN SOURCE; SYNTHETIC TESTS ADDED BUT NOT RUN; REAL-FILE/FUZZ/SECURITY GATES OPEN |
 | Security review | Threat checklist and independent findings | Analysis drafted; independent review NOT RUN |
 | Documentation | Links, support claims, and version consistency | Updated; review required |
 
