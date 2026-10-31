@@ -22,6 +22,15 @@ int main(){
  assert(sli_provider_apply(p,0,&r)==-2);
  c.recursive=0;c.dry_run=0;assert(sli_provider_preview(p,&c,&r,nullptr,0,&needed)==0);assert(needed==1);
  items.resize(needed);assert(sli_provider_preview(p,&c,&r,items.data(),items.size(),&needed)==0);
+ assert(std::strlen(items[0].sha256)==64); // review binds the original bytes, not only size and mtime
+ auto reviewed_time=fs::last_write_time(base/"src"/"photo.JPG");
+ write(base/"src"/"photo.JPG","Synthetic-image-bytes"); // same length; restore mtime to defeat metadata-only checks
+ fs::last_write_time(base/"src"/"photo.JPG",reviewed_time);
+ assert(sli_provider_apply(p,1,&r)==1);assert(r.failed==1&&r.published==0);
+ assert(!fs::exists(fs::path(items[0].destination)));
+ write(base/"src"/"photo.JPG","synthetic-image-bytes");
+ assert(sli_provider_preview(p,&c,&r,nullptr,0,&needed)==0);assert(needed==1);
+ items.resize(needed);assert(sli_provider_preview(p,&c,&r,items.data(),items.size(),&needed)==0);
  assert(sli_provider_apply(p,1,&r)==0);assert(r.published==1);assert(fs::exists(base/"src"/"photo.JPG"));
  assert(fs::exists(fs::path(items[0].destination)));assert(fs::file_size(fs::path(items[0].destination))==std::string("synthetic-image-bytes").size());
  // Equal and nested canonical roots are rejected.
