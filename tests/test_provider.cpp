@@ -22,7 +22,8 @@ int main(){
  assert(sli_provider_apply(p,0,&r)==-2);
  c.recursive=0;c.dry_run=0;assert(sli_provider_preview(p,&c,&r,nullptr,0,&needed)==0);assert(needed==1);
  items.resize(needed);assert(sli_provider_preview(p,&c,&r,items.data(),items.size(),&needed)==0);
- assert(std::strlen(items[0].sha256)==64); // review binds the original bytes, not only size and mtime
+ assert(std::strlen(items[0].sha256)==64);
+ assert(std::string(items[0].sha256)=="ea154f2b845db9cf192c94024a7883180edb89a64dbfab16e4109619c43750a2"); // SHA-256 known vector
  auto reviewed_time=fs::last_write_time(base/"src"/"photo.JPG");
  write(base/"src"/"photo.JPG","Synthetic-image-bytes"); // same length; restore mtime to defeat metadata-only checks
  fs::last_write_time(base/"src"/"photo.JPG",reviewed_time);
