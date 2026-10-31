@@ -30,7 +30,7 @@ std::string hex(const std::string &value) {
 std::string manifest(const sli_config &config, const sli_result &result,
                      const std::vector<sli_item> &items, uint64_t count, const std::string &provider_path) {
     std::ostringstream out;
-    out << "SLEELA-IMAGING-PLAN-1\n";
+    out << "SLEELA-IMAGING-PLAN-2\n";
     out << "provider=" << hex(provider_path) << "\n";
     out << "source=" << hex(config.source) << "\n";
     out << "images=" << hex(config.images) << "\n";
