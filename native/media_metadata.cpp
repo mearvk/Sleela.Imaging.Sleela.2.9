@@ -112,7 +112,7 @@ std::string tiff_ascii(Reader &r,uint64_t base,uint64_t end,uint64_t entry,bool 
     if(!r.u16(entry+2,le,type)||!r.u32(entry+4,le,count)||type!=2||count==0||count>128)return {};
     uint32_t offset=0;
     if(count<=4) return r.text(entry+8,count);
-    if(!r.u32(entry+8,le,offset)||base>r.size()||uint64_t(offset)>r.size()-base)return {};
+    if(!r.u32(entry+8,le,offset)||base>end||uint64_t(offset)>end-base||count>end-base-offset)return {};
     return r.text(base+offset,count);
 }
 bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
