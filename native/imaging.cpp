@@ -4,6 +4,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -11,6 +13,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <stdexcept>
 #include <system_error>
 #include <vector>
 namespace fs=std::filesystem;
