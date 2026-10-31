@@ -1,6 +1,6 @@
 # Native filesystem provider ABI
 
-The provider is implemented in native/imaging_provider.cpp and exposed by native/imaging_provider.h as ABI version 1. CMake builds it as a shared library and links OpenSSL Crypto for SHA-256.
+The provider is implemented in native/imaging_provider.cpp and exposed by native/imaging_provider.h as ABI version 1. CMake builds it as a shared library. SHA-256 reuses the project's dependency-free C++ implementation; no external crypto package is required.
 
 ## Contract
 - Preview canonicalizes all six existing roots and rejects overlapping roots.
