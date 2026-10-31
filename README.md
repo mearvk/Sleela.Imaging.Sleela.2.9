@@ -41,4 +41,4 @@ The provider uses filesystem modification time only; embedded EXIF/QuickTime cap
 
 ## Native companion build
 
-See docs/NATIVE_BUILD.md for build instructions. CMake requires OpenSSL Crypto for the shared provider library. A successful native build does not prove SLeeLa source compilation or VM integration.
+See docs/NATIVE_BUILD.md for build instructions. The provider uses the same dependency-free SHA-256 implementation as the existing native engine. A successful native build does not prove SLeeLa source compilation or VM integration.
