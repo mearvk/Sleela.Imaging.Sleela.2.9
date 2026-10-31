@@ -71,7 +71,9 @@ int main(int argc, char **argv) {
         sli_host_close(host);
         return 4;
     }
-    // Keep a non-null output buffer even for an empty plan: the provider marks\n    // the preview ready only when the caller supplies an output buffer.\n    std::vector<sli_item> items((size_t)(required ? required : 1u));
+    // Keep a non-null output buffer even for an empty plan: the provider marks
+    // the preview ready only when the caller supplies an output buffer.
+    std::vector<sli_item> items((size_t)(required ? required : 1u));
     rc = sli_host_preview(host, &config, &result, items.data(),
                           (uint64_t)items.size(), &required);
     if (rc < 0) {
@@ -83,9 +85,12 @@ int main(int argc, char **argv) {
         result.status, (unsigned long long)result.files_seen, (unsigned long long)result.eligible,
         (unsigned long long)result.unknown_timestamp, (unsigned long long)result.collisions,
         (unsigned long long)result.failed);
-    for (const auto &item : items)
-        std::printf("%s -> %s [%s, %llu bytes]\n", item.source, item.destination,
+    for (uint64_t i = 0; i < required; ++i) {
+        const auto &item = items[(size_t)i];
+        std::printf("%s -> %s [%s, %llu bytes]
+", item.source, item.destination,
                     item.state, (unsigned long long)item.bytes);
+    }
 
     if (apply) {
         sli_result applied{};
