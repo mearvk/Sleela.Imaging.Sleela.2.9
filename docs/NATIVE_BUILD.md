@@ -1,6 +1,6 @@
 # Native build
 
-The project builds the standalone organizer CLI, the C ABI v2 filesystem provider, the explicit-path host adapter, and the SLeeLa process bridge. All native targets use C++17.
+The project builds the standalone organizer CLI, the C ABI v3 filesystem provider, the explicit-path host adapter, and the SLeeLa process bridge. All native targets use C++17.
 
 ## Requirements
 
@@ -22,14 +22,14 @@ Windows (Visual Studio generator):
     cmake --build build --config Release --parallel
     ctest --test-dir build -C Release --output-on-failure
 
-The suite includes the CLI integration test, provider contract test, and reviewed-plan bridge test. Tests use synthetic files in temporary directories. The bridge test checks immutable plan/report publication, stale-plan rejection, and source preservation. The provider test checks a known SHA-256 vector and rejects a same-size content mutation after restoring the original modification timestamp.
+The suite includes the CLI integration test, provider contract test, reviewed-plan bridge test, and synthetic metadata fixtures for JPEG EXIF, TIFF EXIF, QuickTime dates, and malformed metadata. Tests use synthetic files in temporary directories. The bridge test checks immutable plan/report publication, stale-plan rejection, and source preservation. The provider test checks a known SHA-256 vector and rejects a same-size content mutation after restoring the original modification timestamp.
 
 CI is manual-dispatch only. No CI was dispatched for this coding pass. A source change or a local compile probe is not a substitute for a successful exact-commit build and CTest run on each supported OS.
 
 ## Native targets
 
 - sleela-imaging: standalone organizer CLI.
-- sleela_imaging_provider: shared C ABI v2 filesystem provider.
+- sleela_imaging_provider: shared C ABI v3 filesystem provider plus embedded metadata parser.
 - sleela_imaging_host: explicit-path dynamic loader and ABI adapter.
 - sleela-imaging-bridge: child-process bridge invoked by SLeeLa's existing osRun built-in.
 
