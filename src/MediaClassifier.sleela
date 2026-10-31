@@ -1,20 +1,22 @@
-<< Image and video extension classifier. >>
+<< Image / video classification POLICY.
+   SLeeLa has no string-case or substring operations, so the lowercased
+   extension (with leading dot, e.g. ".jpg") is produced by the platform
+   enumeration step and handed in here already normalized. This class decides
+   the CATEGORY from that normalized token. >>
 #sleela 2.9
 material;
 class MediaClassifier {
-  boolean isImage(String e) {
-    String x=e.toLowerCase();
-    return x==".jpg" || x==".jpeg" || x==".heic" || x==".png" ||
+  boolean isImage(String x) {
+    return x==".jpg" || x==".jpeg" || x==".heic" || x==".heif" || x==".png" ||
       x==".tiff" || x==".tif" || x==".bmp" || x==".gif" || x==".webp";
   }
-  boolean isVideo(String e) {
-    String x=e.toLowerCase();
-    return x==".mov" || x==".mp4" || x==".mpeg" || x==".mpg" ||
-      x==".avi" || x==".m4v";
+  boolean isVideo(String x) {
+    return x==".mov" || x==".mp4" || x==".m4v" || x==".mpeg" || x==".mpg" ||
+      x==".avi";
   }
-  String category(String e) {
-    if (isImage(e)) return "image";
-    if (isVideo(e)) return "video";
+  String category(String x) {
+    if (isImage(x)) return "image";
+    if (isVideo(x)) return "video";
     return "unsupported";
   }
 }

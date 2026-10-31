@@ -1,0 +1,8 @@
+# Demo/test artifacts produced by tests/make-fixture.sh and the organizer
+/fixture/
+.sleela-imaging-work/
+
+# Native companion build output
+/build/
+*.o
+*.so

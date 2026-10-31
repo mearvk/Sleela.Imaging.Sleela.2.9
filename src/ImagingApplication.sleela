@@ -1,43 +1,49 @@
+<< ImagingApplication — top-level wiring for the SLeeLa-native edition.
+
+   Owns a single ImagingSession and exposes the headless organize workflow
+   (configure -> preview -> apply). The session drives the real native
+   ImagingFileSystem provider directly through the VM OS built-ins; there is no
+   out-of-process bridge in the original edition. >>
 #sleela 2.9
 material;
 class ImagingApplication {
- ImagingConfig config;
- ImagingFileSystem filesystem;
- MediaClassifier classifier;
- MediaDateResolver dates;
- MediaNaming naming;
- ImagingSafetyPolicy safety;
- ImagingSession session;
- void configure(ImagingConfig value) {
-  config=value; filesystem=new ImagingFileSystem(); classifier=new MediaClassifier();
-  dates=new MediaDateResolver(); naming=new MediaNaming();
-  safety=new ImagingSafetyPolicy(); session=new ImagingSession(); session.configure(value);
- }
- boolean ready() {
-  if (config==null || !config.isConfigured()) return false;
-  if (!safety.validRoots(config.sourceDirectory,config.imageDestination,config.movDestination,config.mp4Destination,config.mpegDestination,config.aviDestination)) return false;
-  return filesystem.isBound() && filesystem.rootsDisjoint(config.sourceDirectory,config.imageDestination,config.movDestination,config.mp4Destination,config.mpegDestination,config.aviDestination);
- }
- MediaRecord planCandidate(String path, String originalName, String extension,
-   long embeddedTime, long modifiedTime, String localTimestamp,
-   int collisionSequence, long byteCount) {
-  MediaRecord r=new MediaRecord();
-  r.sourcePath=path; r.originalName=originalName; r.extension=extension.toLowerCase();
-  r.category=classifier.category(extension);
-  r.captureTime=dates.resolve(embeddedTime,modifiedTime);
-  r.dateSource=dates.source(embeddedTime,modifiedTime); r.byteCount=byteCount;
-  if (r.category=="image") r.destinationDirectory=config.imageDestination;
-  if (r.category=="video") r.destinationDirectory=config.videoDestination(r.extension);
-  r.destinationName=naming.fileName(localTimestamp,collisionSequence,r.extension);
-  r.state=r.isEligible() ? "planned" : "rejected";
-  return r;
- }
- boolean mayApplyPlan(boolean confirmed) { return session!=null && session.canApply(confirmed); }
- String status() {
-  if (config==null || !config.isConfigured()) return "configuration-invalid-or-incomplete";
-  if (!filesystem.isBound()) return "filesystem-bridge-required";
-  if (!ready()) return "canonical-root-proof-required";
-  return session.status();
- }
- void main() { ImagingWindow ui=new ImagingWindow(); ui.main(); }
+  ImagingConfig config;
+  ImagingSession session;
+  ImagingSafetyPolicy safety;
+
+  void configure(ImagingConfig value) {
+    config = value;
+    safety = new ImagingSafetyPolicy();
+    session = new ImagingSession();
+    session.configure(value);
+  }
+
+  boolean ready() {
+    if (config == null || !config.isConfigured()) return false;
+    return safety.validRoots(config.sourceDirectory, config.imageDestination,
+      config.movDestination, config.mp4Destination, config.mpegDestination, config.aviDestination);
+  }
+
+  < Run a read-only preview and return its status line. >
+  String preview() {
+    if (session == null) return "configuration-missing";
+    return session.preview();
+  }
+
+  < Apply the reviewed plan (requires explicit confirmation and a safe config). >
+  String apply(boolean confirmed) {
+    if (session == null) return "configuration-missing";
+    return session.requestApply(confirmed);
+  }
+
+  int planned() { return session == null ? 0 : session.planned(); }
+  int published() { return session == null ? 0 : session.published(); }
+  int failed() { return session == null ? 0 : session.failed(); }
+  int skipped() { return session == null ? 0 : session.skipped(); }
+
+  String status() {
+    if (config == null || !config.isConfigured()) return "configuration-invalid-or-incomplete";
+    if (!ready()) return "canonical-root-proof-required";
+    return session.status();
+  }
 }

@@ -1,23 +1,192 @@
+<< ImagingFileSystem — the REAL SLeeLa-native filesystem provider.
+
+   This is the original edition: instead of deferring to an out-of-process
+   native C++ bridge, ImagingFileSystem performs every filesystem action
+   directly through the SLeeLa VM OS built-ins (osRun / osExists / osIsDir /
+   osFileSize / osMakeDir / openFile / read / close).
+
+   SLeeLa has no in-language string manipulation (no substring, split, case
+   folding, or char access), so the unavoidable text and byte work — directory
+   enumeration, extension extraction, modification-time lookup, SHA-256, chrono
+   date formatting, and binary-safe copy — is delegated to small, fixed POSIX
+   shell commands launched with osRun. Every RESULT is returned as a single
+   scalar value written WITHOUT a trailing newline into a per-run work file and
+   read back with openFile/read, so SLeeLa can compare it with ==.
+
+   The decision logic (eligibility, naming, provenance, safety gating, digest
+   verification) stays in SLeeLa. The shell is used only as a tokenizer and as
+   the byte-copy engine, never as a policy authority. >>
 #sleela 2.9
 material;
 class ImagingFileSystem {
- String bridgeName="SLeeLa Imaging filesystem VM/OS provider";
- String bridgeStatus="unbound";
- String bridgeVersion="none";
- boolean isBound() { return bridgeStatus=="bound" && bridgeVersion!="none"; }
- boolean rootsDisjoint(String source, String images, String mov, String mp4, String mpeg, String avi) { return false; }
- boolean createPreviewSnapshot(String source, boolean recursive) { return false; }
- boolean supportsAtomicNoReplace() { return false; }
- boolean supportsSha256() { return false; }
- boolean supportsStableSnapshot() { return false; }
- boolean executeVerifiedPlan() { return false; }
- String listFiles(String directory, boolean recursive) { return "BRIDGE_REQUIRED:listFiles"; }
- String canonicalPath(String path) { return "BRIDGE_REQUIRED:canonicalPath"; }
- boolean isRegularFile(String path) { return false; }
- long readEmbeddedCaptureTime(String path) { return 0; }
- long modifiedTime(String path) { return 0; }
- String copyToExclusiveTemporary(String source, String destinationDirectory) { return "BRIDGE_REQUIRED:copyToExclusiveTemporary"; }
- boolean verifyByteCountAndSha256(String source, String temporaryDestination) { return false; }
- boolean publishNoReplace(String temporaryDestination, String finalDestination) { return false; }
- boolean writeLocalReport(String destination, String reportText) { return false; }
+  String workDir = "";
+  String planDir = "";
+
+  << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
+  String metaVersion = "3.0.0";
+  int metaId = 2909;
+  String metaAuthor = "Max Rupplin / MEARVK LLC";
+  String metaDate = "2026-10-31";
+  String metaCopyright = "MEARVK LLC";
+  String metaTrademark = "none";
+  String metaCorporation = "MEARVK LLC";
+  String metaOrigin = "International";
+  String metaBirthDate = "2026-10-31";
+  int metaScienceRating = 7;
+  String metaNationalSchedule = "none";
+  String getMetaVersion() { return metaVersion; }
+  int getMetaId() { return metaId; }
+  String getAuthor() { return metaAuthor; }
+  String getOrigin() { return metaOrigin; }
+  String getNationalSchedule() { return metaNationalSchedule; }
+
+  << The native provider is always available: it is the VM own OS surface. >>
+  boolean isBound() { return true; }
+
+  << Quote a path for a double-quoted argument inside the single-quoted sh
+     command. The session validates paths before any command runs. >>
+  String q(String path) { return "\"" + path + "\""; }
+
+  << Read one scalar field file produced by the shell (no trailing newline). >>
+  String readField(String path) {
+    int h = openFile(path, "r");
+    if (h < 0) return "";
+    String s = read(h);
+    close(h);
+    return s;
+  }
+
+  << Prepare a private per-run working area. Prefer the OS temp dir; fall back
+     to a local directory when temp is not writable. >>
+  boolean beginRun() {
+    String base = osTempDir() + "/sleela-imaging";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-imaging-work"; osMakeDir(base); }
+    long stamp = timeUtcMillis();
+    workDir = base + "/run-" + stamp;
+    osMakeDir(workDir);
+    planDir = workDir + "/plan";
+    osMakeDir(planDir);
+    return osIsDir(workDir) == 1;
+  }
+
+  String runWorkDir() { return workDir; }
+
+  << Canonical-root separation proof: all six roots must exist as directories
+     and be pairwise distinct canonical paths. The shell resolves each with
+     readlink -f (symlinks collapsed) and the comparison is done here. >>
+  boolean rootsDisjoint(String source, String images, String mov, String mp4, String mpeg, String avi) {
+    if (osIsDir(source) != 1) return false;
+    String f = workDir + "/roots.txt";
+    osRun("sh -c '"
+      + "s=$(readlink -f " + q(source) + "); i=$(readlink -f " + q(images) + "); "
+      + "a=$(readlink -f " + q(mov) + "); b=$(readlink -f " + q(mp4) + "); "
+      + "c=$(readlink -f " + q(mpeg) + "); d=$(readlink -f " + q(avi) + "); "
+      + "n=$(printf \"%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n\" \"$s\" \"$i\" \"$a\" \"$b\" \"$c\" \"$d\" | sort -u | wc -l); "
+      + "if [ \"$n\" = 6 ]; then printf OK; else printf NO; fi"
+      + "' > " + q(f));
+    return readField(f) == "OK";
+  }
+
+  << Create the deterministic, chronologically sorted preview snapshot.
+     One record per eligible media file is written to planDir as numbered
+     per-field files: k.ext (lowercased extension with leading dot), k.epoch
+     (modification time, seconds), k.src (source path), k.sha (SHA-256 hex),
+     plus count.txt. Symbolic links are NOT followed (find -P, not -type l).
+     Returns true when the snapshot completed. >>
+  boolean createPreviewSnapshot(String source, boolean recursive) {
+    String maxdepth = recursive ? "" : "-maxdepth 1 ";
+    String list = workDir + "/list.txt";
+    osRun("sh -c '"
+      + "find -P " + q(source) + " " + maxdepth + "! -type l -type f "
+      + "\\( -iname \"*.jpg\" -o -iname \"*.jpeg\" -o -iname \"*.heic\" -o -iname \"*.heif\" "
+      + "-o -iname \"*.png\" -o -iname \"*.tiff\" -o -iname \"*.tif\" -o -iname \"*.bmp\" "
+      + "-o -iname \"*.gif\" -o -iname \"*.webp\" -o -iname \"*.mov\" -o -iname \"*.mp4\" "
+      + "-o -iname \"*.m4v\" -o -iname \"*.mpeg\" -o -iname \"*.mpg\" -o -iname \"*.avi\" \\) "
+      + "-printf \"%T@ %p\\n\" 2>/dev/null | sort -n | sed \"s/^[0-9.]* //\" > " + q(list) + "'");
+    String pd = planDir;
+    osRun("sh -c '"
+      + "k=0; while IFS= read -r p; do "
+      + "ext=\".$(printf \"%s\" \"$p\" | sed \"s/.*\\.//\" | tr \"[:upper:]\" \"[:lower:]\")\"; "
+      + "printf \"%s\" \"$ext\" > \"" + pd + "/$k.ext\"; "
+      + "printf \"%s\" \"$(stat -c %Y \"$p\" 2>/dev/null)\" > \"" + pd + "/$k.epoch\"; "
+      + "printf \"%s\" \"$p\" > \"" + pd + "/$k.src\"; "
+      + "printf \"%s\" \"$(sha256sum \"$p\" 2>/dev/null | cut -d\" \" -f1)\" > \"" + pd + "/$k.sha\"; "
+      + "k=$((k+1)); done < " + q(list) + "; "
+      + "printf \"%s\" \"$k\" > \"" + pd + "/count.txt\""
+      + "'");
+    return osExists(planDir + "/count.txt") == 1;
+  }
+
+  << Enumeration accessors read back by the session loop (one scalar each). >>
+  String planExtension(int k) { return readField(planDir + "/" + k + ".ext"); }
+  String planSourcePath(int k) { return readField(planDir + "/" + k + ".src"); }
+  String planEpoch(int k) { return readField(planDir + "/" + k + ".epoch"); }
+  String planDigest(int k) { return readField(planDir + "/" + k + ".sha"); }
+
+  << Sentinel bound: record k exists iff its .src field file exists. >>
+  boolean planHasRecord(int k) { return osExists(planDir + "/" + k + ".src") == 1; }
+
+  << epochSeconds arrives as a scalar string token; a non-empty all-digit value
+     formats to yyyy-MM-dd_HH-mm-ss (UTC), otherwise the empty string. >>
+  String formatTimestamp(String epochSeconds) {
+    if (epochSeconds == "") return "";
+    String f = workDir + "/dt.txt";
+    osRun("sh -c 'e=" + q(epochSeconds) + "; : > " + q(f) + "; case \"$e\" in \"\"|*[!0-9]*) : ;; *) date -u -d @\"$e\" \"+%Y-%m-%d_%H-%M-%S\" | tr -d \"\\n\" > " + q(f) + " ;; esac' ");
+    return readField(f);
+  }
+
+  long fileSize(String path) { return osFileSize(path); }
+
+  << Ensure a destination directory exists (recursively, like mkdir -p). >>
+  boolean ensureDirectory(String path) {
+    osRun("sh -c 'mkdir -p " + q(path) + "'");
+    return osIsDir(path) == 1;
+  }
+
+  << Does the source still match its reviewed preview-time digest? Rejects any
+     same-size / same-mtime content substitution because the hash is recomputed. >>
+  boolean sourceStillMatches(String sourcePath, String reviewedDigest) {
+    if (reviewedDigest == "") return false;
+    if (osExists(sourcePath) != 1) return false;
+    String f = workDir + "/recheck.txt";
+    osRun("sh -c 'sha256sum " + q(sourcePath) + " 2>/dev/null | cut -d\" \" -f1 | tr -d \"\\n\" > " + q(f) + "'");
+    return readField(f) == reviewedDigest;
+  }
+
+  << Verified, no-overwrite publication:
+       1. refuse if the final destination already exists (no silent overwrite),
+       2. copy source into an exclusive temp file in the destination directory,
+       3. recompute the temp copy SHA-256 and require it to equal the reviewed
+          digest,
+       4. rename the verified temp into place only if the final name is still
+          absent; the original source is never deleted or modified.
+     Returns one of: published, exists, copy-failed, verify-failed,
+     publish-failed. >>
+  String publishVerifiedCopy(String sourcePath, String destDir, String destName, String reviewedDigest) {
+    String finalPath = destDir + "/" + destName;
+    if (osExists(finalPath) == 1) return "exists";
+    if (!ensureDirectory(destDir)) return "publish-failed";
+    String tmp = destDir + "/.sleela-imaging-tmp-" + timeUtcMillis();
+    String r = workDir + "/pub.txt";
+    osRun("sh -c '"
+      + "src=" + q(sourcePath) + "; tmp=" + q(tmp) + "; fin=" + q(finalPath) + "; want=" + q(reviewedDigest) + "; "
+      + "cp -p \"$src\" \"$tmp\" || { printf copy-failed > " + q(r) + "; exit 0; }; "
+      + "got=$(sha256sum \"$tmp\" | cut -d\" \" -f1); "
+      + "if [ \"$got\" != \"$want\" ]; then rm -f \"$tmp\"; printf verify-failed > " + q(r) + "; exit 0; fi; "
+      + "if [ -e \"$fin\" ]; then rm -f \"$tmp\"; printf exists > " + q(r) + "; exit 0; fi; "
+      + "mv -n \"$tmp\" \"$fin\" && [ -e \"$fin\" ] && printf published > " + q(r) + " || { rm -f \"$tmp\"; printf publish-failed > " + q(r) + "; }"
+      + "'");
+    return readField(r);
+  }
+
+  << Write a local, human-readable review report (never overwrites). >>
+  boolean writeReport(String path, String reportText) {
+    if (osExists(path) == 1) return false;
+    int h = openFile(path, "w");
+    if (h < 0) return false;
+    write(h, reportText);
+    close(h);
+    return osExists(path) == 1;
+  }
 }

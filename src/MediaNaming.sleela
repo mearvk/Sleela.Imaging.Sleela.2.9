@@ -1,18 +1,20 @@
-<< Chronological names with a three-digit collision sequence. >>
+<< Chronological names with a three-digit collision sequence.
+   The platform supplies the already-formatted timestamp (yyyy-MM-dd_HH-mm-ss)
+   and the lowercased extension (with leading dot), because SLeeLa has no
+   in-language string manipulation; this class owns the naming POLICY. >>
 #sleela 2.9
 material;
 class MediaNaming {
+  < Zero-pad a 1..999 collision counter to three digits. Pure SLeeLa arithmetic. >
   String sequence(int n) {
     if (n < 1) return "000";
     if (n < 10) return "00" + n;
     if (n < 100) return "0" + n;
     return "" + n;
   }
-  < timestamp is supplied by the platform as yyyy-MM-dd_HH-mm-ss. >
+  < timestamp is yyyy-MM-dd_HH-mm-ss; extension is e.g. ".jpg" (already lowercased). >
   String fileName(String timestamp, int n, String extension) {
     if (timestamp == "" || n < 1 || extension == "") return "";
-    String ext=extension.toLowerCase();
-    if (ext.charAt(0) != '.') ext="."+ext;
-    return timestamp+"_"+sequence(n)+ext;
+    return timestamp + "_" + sequence(n) + extension;
   }
 }

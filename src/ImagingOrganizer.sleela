@@ -1,0 +1,419 @@
+<< ImagingOrganizer — single-file, runnable SLeeLa-native edition.
+
+   This file is the self-contained, executable form of the SLeeLa Imaging
+   organizer. The SLeeLa runtime runs a program from one merged translation
+   unit, so this file inlines every application class (the same logic kept
+   modular under src/*.sleela) plus a headless demo main().
+
+   Run it with the source-built compiler:
+
+     SLEELA_HOME=/path/to/SLeeLa sleela run src/ImagingOrganizer.sleela \
+       <source> <images> <mov> <mp4> <mpeg> <avi> [apply]
+
+   With no arguments it organizes the bundled ./fixture tree in dry-run
+   (preview-only). Pass the six roots and the literal word "apply" as the 7th
+   argument to actually publish verified copies (originals are preserved). >>
+#sleela 2.9
+
+<< ---------- value / policy classes ---------- >>
+
+class MediaClassifier {
+  boolean isImage(String x) {
+    return x==".jpg" || x==".jpeg" || x==".heic" || x==".heif" || x==".png" ||
+      x==".tiff" || x==".tif" || x==".bmp" || x==".gif" || x==".webp";
+  }
+  boolean isVideo(String x) {
+    return x==".mov" || x==".mp4" || x==".m4v" || x==".mpeg" || x==".mpg" || x==".avi";
+  }
+  String category(String x) {
+    if (isImage(x)) return "image";
+    if (isVideo(x)) return "video";
+    return "unsupported";
+  }
+}
+
+class MediaDateResolver {
+  long resolve(long embeddedTime, long modifiedTime) {
+    if (embeddedTime > 0) return embeddedTime;
+    if (modifiedTime > 0) return modifiedTime;
+    return 0;
+  }
+  String source(long embeddedTime, long modifiedTime) {
+    if (embeddedTime > 0) return "embedded-metadata";
+    if (modifiedTime > 0) return "filesystem-modified-time";
+    return "unknown";
+  }
+}
+
+class MediaNaming {
+  String sequence(int n) {
+    if (n < 1) return "000";
+    if (n < 10) return "00" + n;
+    if (n < 100) return "0" + n;
+    return "" + n;
+  }
+  String fileName(String timestamp, int n, String extension) {
+    if (timestamp == "" || n < 1 || extension == "") return "";
+    return timestamp + "_" + sequence(n) + extension;
+  }
+}
+
+class ImagingConfig {
+  String sourceDirectory = "";
+  String imageDestination = "";
+  String movDestination = "";
+  String mp4Destination = "";
+  String mpegDestination = "";
+  String aviDestination = "";
+  boolean recursive = false;
+  boolean dryRun = true;
+  boolean followSymbolicLinks = false;
+  boolean verifyDigest = true;
+  boolean preserveSource = true;
+  boolean allowNetwork = false;
+  boolean deleteSource = false;
+  boolean isConfigured() {
+    return sourceDirectory!="" && imageDestination!="" && movDestination!="" &&
+      mp4Destination!="" && mpegDestination!="" && aviDestination!="";
+  }
+  String videoDestination(String ext) {
+    if (ext==".mov") return movDestination;
+    if (ext==".mp4" || ext==".m4v") return mp4Destination;
+    if (ext==".mpeg" || ext==".mpg") return mpegDestination;
+    if (ext==".avi") return aviDestination;
+    return "";
+  }
+  boolean isSafeDefault() {
+    return dryRun && preserveSource && !followSymbolicLinks && !allowNetwork &&
+      !deleteSource && verifyDigest;
+  }
+}
+
+class ImagingSafetyPolicy {
+  boolean validRoots(String source, String images, String mov, String mp4, String mpeg, String avi) {
+    if (source=="" || images=="" || mov=="" || mp4=="" || mpeg=="" || avi=="") return false;
+    if (source==images || source==mov || source==mp4 || source==mpeg || source==avi) return false;
+    if (images==mov || images==mp4 || images==mpeg || images==avi) return false;
+    if (mov==mp4 || mov==mpeg || mov==avi) return false;
+    if (mp4==mpeg || mp4==avi || mpeg==avi) return false;
+    return true;
+  }
+  boolean mayApply(boolean confirmed, boolean dryRun, boolean previewComplete, boolean sourcePreserved, boolean bridgeBound, boolean atomicNoReplace, boolean digestVerified, boolean stableSnapshot) {
+    return confirmed && !dryRun && previewComplete && sourcePreserved && bridgeBound && atomicNoReplace && digestVerified && stableSnapshot;
+  }
+}
+
+<< ---------- the real native filesystem provider ---------- >>
+
+class ImagingFileSystem {
+  String workDir = "";
+  String planDir = "";
+  boolean isBound() { return true; }
+  String q(String path) { return "\"" + path + "\""; }
+  String readField(String path) {
+    int h = openFile(path, "r");
+    if (h < 0) return "";
+    String s = read(h);
+    close(h);
+    return s;
+  }
+  boolean beginRun() {
+    << Private per-run work area. Prefer the OS temp dir; fall back to a local
+       .sleela-imaging-work directory when temp is not writable. >>
+    String base = osTempDir() + "/sleela-imaging";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-imaging-work"; osMakeDir(base); }
+    long stamp = timeUtcMillis();
+    workDir = base + "/run-" + stamp;
+    osMakeDir(workDir);
+    planDir = workDir + "/plan";
+    osMakeDir(planDir);
+    return osIsDir(workDir) == 1;
+  }
+  String runWorkDir() { return workDir; }
+  boolean rootsDisjoint(String source, String images, String mov, String mp4, String mpeg, String avi) {
+    if (osIsDir(source) != 1) return false;
+    String f = workDir + "/roots.txt";
+    osRun("sh -c '"
+      + "s=$(readlink -f " + q(source) + "); i=$(readlink -f " + q(images) + "); "
+      + "a=$(readlink -f " + q(mov) + "); b=$(readlink -f " + q(mp4) + "); "
+      + "c=$(readlink -f " + q(mpeg) + "); d=$(readlink -f " + q(avi) + "); "
+      + "n=$(printf \"%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n\" \"$s\" \"$i\" \"$a\" \"$b\" \"$c\" \"$d\" | sort -u | wc -l); "
+      + "if [ \"$n\" = 6 ]; then printf OK; else printf NO; fi"
+      + "' > " + q(f));
+    return readField(f) == "OK";
+  }
+  boolean createPreviewSnapshot(String source, boolean recursive) {
+    String maxdepth = recursive ? "" : "-maxdepth 1 ";
+    String list = workDir + "/list.txt";
+    osRun("sh -c '"
+      + "find -P " + q(source) + " " + maxdepth + "! -type l -type f "
+      + "\\( -iname \"*.jpg\" -o -iname \"*.jpeg\" -o -iname \"*.heic\" -o -iname \"*.heif\" "
+      + "-o -iname \"*.png\" -o -iname \"*.tiff\" -o -iname \"*.tif\" -o -iname \"*.bmp\" "
+      + "-o -iname \"*.gif\" -o -iname \"*.webp\" -o -iname \"*.mov\" -o -iname \"*.mp4\" "
+      + "-o -iname \"*.m4v\" -o -iname \"*.mpeg\" -o -iname \"*.mpg\" -o -iname \"*.avi\" \\) "
+      + "-printf \"%T@ %p\\n\" 2>/dev/null | sort -n | sed \"s/^[0-9.]* //\" > " + q(list) + "'");
+    String pd = planDir;
+    osRun("sh -c '"
+      + "k=0; while IFS= read -r p; do "
+      + "ext=\".$(printf \"%s\" \"$p\" | sed \"s/.*\\.//\" | tr \"[:upper:]\" \"[:lower:]\")\"; "
+      + "printf \"%s\" \"$ext\" > \"" + pd + "/$k.ext\"; "
+      + "printf \"%s\" \"$(stat -c %Y \"$p\" 2>/dev/null)\" > \"" + pd + "/$k.epoch\"; "
+      + "printf \"%s\" \"$p\" > \"" + pd + "/$k.src\"; "
+      + "printf \"%s\" \"$(sha256sum \"$p\" 2>/dev/null | cut -d\" \" -f1)\" > \"" + pd + "/$k.sha\"; "
+      + "k=$((k+1)); done < " + q(list) + "; "
+      + "printf \"%s\" \"$k\" > \"" + pd + "/count.txt\""
+      + "'");
+    return osExists(planDir + "/count.txt") == 1;
+  }
+  String planExtension(int k) { return readField(planDir + "/" + k + ".ext"); }
+  String planSourcePath(int k) { return readField(planDir + "/" + k + ".src"); }
+  String planEpoch(int k) { return readField(planDir + "/" + k + ".epoch"); }
+  String planDigest(int k) { return readField(planDir + "/" + k + ".sha"); }
+  boolean planHasRecord(int k) { return osExists(planDir + "/" + k + ".src") == 1; }
+  << epochSeconds arrives as a scalar string token from the snapshot; a
+     non-empty all-digit value formats to yyyy-MM-dd_HH-mm-ss (UTC), else "". >>
+  String formatTimestamp(String epochSeconds) {
+    if (epochSeconds == "") return "";
+    String f = workDir + "/dt.txt";
+    osRun("sh -c 'e=" + q(epochSeconds) + "; : > " + q(f) + "; case \"$e\" in \"\"|*[!0-9]*) : ;; *) date -u -d @\"$e\" \"+%Y-%m-%d_%H-%M-%S\" | tr -d \"\\n\" > " + q(f) + " ;; esac' ");
+    return readField(f);
+  }
+  boolean ensureDirectory(String path) {
+    osRun("sh -c 'mkdir -p " + q(path) + "'");
+    return osIsDir(path) == 1;
+  }
+  boolean sourceStillMatches(String sourcePath, String reviewedDigest) {
+    if (reviewedDigest == "") return false;
+    if (osExists(sourcePath) != 1) return false;
+    String f = workDir + "/recheck.txt";
+    osRun("sh -c 'sha256sum " + q(sourcePath) + " 2>/dev/null | cut -d\" \" -f1 | tr -d \"\\n\" > " + q(f) + "'");
+    return readField(f) == reviewedDigest;
+  }
+  String publishVerifiedCopy(String sourcePath, String destDir, String destName, String reviewedDigest) {
+    String finalPath = destDir + "/" + destName;
+    if (osExists(finalPath) == 1) return "exists";
+    if (!ensureDirectory(destDir)) return "publish-failed";
+    String tmp = destDir + "/.sleela-imaging-tmp-" + timeUtcMillis();
+    String r = workDir + "/pub.txt";
+    osRun("sh -c '"
+      + "src=" + q(sourcePath) + "; tmp=" + q(tmp) + "; fin=" + q(finalPath) + "; want=" + q(reviewedDigest) + "; "
+      + "cp -p \"$src\" \"$tmp\" || { printf copy-failed > " + q(r) + "; exit 0; }; "
+      + "got=$(sha256sum \"$tmp\" | cut -d\" \" -f1); "
+      + "if [ \"$got\" != \"$want\" ]; then rm -f \"$tmp\"; printf verify-failed > " + q(r) + "; exit 0; fi; "
+      + "if [ -e \"$fin\" ]; then rm -f \"$tmp\"; printf exists > " + q(r) + "; exit 0; fi; "
+      + "mv -n \"$tmp\" \"$fin\" && [ -e \"$fin\" ] && printf published > " + q(r) + " || { rm -f \"$tmp\"; printf publish-failed > " + q(r) + "; }"
+      + "'");
+    return readField(r);
+  }
+}
+
+<< ---------- the two-stage session engine ---------- >>
+
+class ImagingSession {
+  ImagingConfig config;
+  ImagingSafetyPolicy safety;
+  ImagingFileSystem filesystem;
+  MediaClassifier classifier;
+  MediaDateResolver dates;
+  MediaNaming naming;
+  boolean configured = false;
+  boolean previewReady = false;
+  int plannedCount = 0;
+  int publishedCount = 0;
+  int failedCount = 0;
+  int skippedCount = 0;
+  String state = "idle";
+  String lastStatus = "No session configured.";
+  String[] planSrc;
+  String[] planDest;
+  String[] planName;
+  String[] planDigest;
+  String[] planDateSource;
+
+  void configure(ImagingConfig value) {
+    config = value;
+    safety = new ImagingSafetyPolicy();
+    filesystem = new ImagingFileSystem();
+    classifier = new MediaClassifier();
+    dates = new MediaDateResolver();
+    naming = new MediaNaming();
+    configured = (config != null);
+    previewReady = false;
+    plannedCount = 0;
+    state = configured ? "configured" : "idle";
+    lastStatus = configured ? "Configuration received." : "Configuration missing.";
+  }
+  boolean sameConfiguration(ImagingConfig value) {
+    if (config == null || value == null) return false;
+    return config.sourceDirectory == value.sourceDirectory &&
+      config.imageDestination == value.imageDestination &&
+      config.movDestination == value.movDestination &&
+      config.mp4Destination == value.mp4Destination &&
+      config.mpegDestination == value.mpegDestination &&
+      config.aviDestination == value.aviDestination &&
+      config.recursive == value.recursive && config.dryRun == value.dryRun &&
+      config.verifyDigest == value.verifyDigest && config.preserveSource == value.preserveSource;
+  }
+  String preview() {
+    previewReady = false;
+    plannedCount = 0;
+    skippedCount = 0;
+    if (!configured || config == null) { state = "blocked"; lastStatus = "BLOCKED: configuration is missing."; return lastStatus; }
+    if (!config.isConfigured()) { state = "blocked"; lastStatus = "BLOCKED: complete all source and destination paths."; return lastStatus; }
+    if (config.allowNetwork || config.deleteSource || config.followSymbolicLinks || !config.preserveSource) {
+      state = "blocked"; lastStatus = "BLOCKED: unsafe configuration option."; return lastStatus;
+    }
+    if (!safety.validRoots(config.sourceDirectory, config.imageDestination, config.movDestination, config.mp4Destination, config.mpegDestination, config.aviDestination)) {
+      state = "blocked"; lastStatus = "BLOCKED: roots must be present and distinct."; return lastStatus;
+    }
+    if (!filesystem.beginRun()) { state = "blocked"; lastStatus = "BLOCKED: could not create a private work area."; return lastStatus; }
+    if (!filesystem.rootsDisjoint(config.sourceDirectory, config.imageDestination, config.movDestination, config.mp4Destination, config.mpegDestination, config.aviDestination)) {
+      state = "blocked"; lastStatus = "BLOCKED: canonical root separation is not proven."; return lastStatus;
+    }
+    if (!filesystem.createPreviewSnapshot(config.sourceDirectory, config.recursive)) {
+      state = "blocked"; lastStatus = "BLOCKED: provider did not produce a stable preview."; return lastStatus;
+    }
+    planSrc = new String[1024];
+    planDest = new String[1024];
+    planName = new String[1024];
+    planDigest = new String[1024];
+    planDateSource = new String[1024];
+    String prevKey = "";
+    int seq = 0;
+    int k = 0;
+    int plan = 0;
+    while (filesystem.planHasRecord(k) && k < 1024) {
+      String ext = filesystem.planExtension(k);
+      String src = filesystem.planSourcePath(k);
+      String epoch = filesystem.planEpoch(k);
+      String digest = filesystem.planDigest(k);
+      String category = classifier.category(ext);
+      << No embedded EXIF capture time is available to pure SLeeLa, so the
+         provenance is filesystem modification time whenever an epoch is present
+         (matches the Java reference fallback, never invents the current date). >>
+      String dsource = (epoch != "") ? "filesystem-modified-time" : "unknown";
+      String dest = "";
+      if (category == "image") dest = config.imageDestination;
+      if (category == "video") dest = config.videoDestination(ext);
+      String stamp = filesystem.formatTimestamp(epoch);
+      boolean eligible = (category == "image" || category == "video") &&
+        dest != "" && epoch != "" && stamp != "" && src != "";
+      if (eligible) {
+        String key = dest + "|" + stamp + "|" + ext;
+        if (key == prevKey) { seq = seq + 1; } else { seq = 1; prevKey = key; }
+        String name = naming.fileName(stamp, seq, ext);
+        planSrc[plan] = src;
+        planDest[plan] = dest;
+        planName[plan] = name;
+        planDigest[plan] = digest;
+        planDateSource[plan] = dsource;
+        plan = plan + 1;
+      } else {
+        skippedCount = skippedCount + 1;
+      }
+      k = k + 1;
+    }
+    plannedCount = plan;
+    previewReady = true;
+    state = "preview-ready";
+    lastStatus = "Preview ready. " + plannedCount + " file(s) planned, " + skippedCount + " skipped. No files have been changed.";
+    return lastStatus;
+  }
+  boolean canApply(boolean userConfirmed) {
+    if (!configured || !previewReady || config == null) return false;
+    return safety.mayApply(userConfirmed, config.dryRun, previewReady, config.preserveSource,
+      filesystem.isBound(), true, config.verifyDigest, true);
+  }
+  String requestApply(boolean userConfirmed) {
+    if (!canApply(userConfirmed)) {
+      state = "blocked";
+      lastStatus = "DENIED: a fresh preview, explicit confirmation, SHA-256 verification, source preservation, and dry-run disabled are all required.";
+      return lastStatus;
+    }
+    publishedCount = 0;
+    failedCount = 0;
+    skippedCount = 0;
+    int i = 0;
+    while (i < plannedCount) {
+      String src = planSrc[i];
+      String dest = planDest[i];
+      String name = planName[i];
+      String digest = planDigest[i];
+      if (!filesystem.sourceStillMatches(src, digest)) {
+        failedCount = failedCount + 1;
+      } else {
+        String result = filesystem.publishVerifiedCopy(src, dest, name, digest);
+        if (result == "published") { publishedCount = publishedCount + 1; }
+        else if (result == "exists") { skippedCount = skippedCount + 1; }
+        else { failedCount = failedCount + 1; }
+      }
+      i = i + 1;
+    }
+    previewReady = false;
+    state = "complete";
+    lastStatus = "Operation completed. Published " + publishedCount + ", skipped " + skippedCount + " (already present), failed " + failedCount + ". Source files were preserved.";
+    return lastStatus;
+  }
+  void printPlan() {
+    int i = 0;
+    while (i < plannedCount) {
+      print("  " + planSrc[i] + "  ->  " + planDest[i] + "/" + planName[i] + "  [" + planDateSource[i] + "]");
+      i = i + 1;
+    }
+  }
+  int planned() { return plannedCount; }
+  int published() { return publishedCount; }
+  int failed() { return failedCount; }
+  int skipped() { return skippedCount; }
+  String status() { return lastStatus; }
+}
+
+<< ---------- headless demo entry point ---------- >>
+
+class ImagingOrganizer {
+  void main() {
+    print("SLeeLa Imaging 2.9 — native edition (headless demo)");
+    print("platform=" + osPlatform() + " user=" + osUserName());
+
+    ImagingConfig cfg = new ImagingConfig();
+    cfg.sourceDirectory = "fixture/src";
+    cfg.imageDestination = "fixture/out/Images";
+    cfg.movDestination = "fixture/out/MOV";
+    cfg.mp4Destination = "fixture/out/MP4";
+    cfg.mpegDestination = "fixture/out/MPEG";
+    cfg.aviDestination = "fixture/out/AVI";
+    cfg.recursive = false;
+    cfg.dryRun = true;
+    cfg.verifyDigest = true;
+    cfg.preserveSource = true;
+
+    ImagingSession session = new ImagingSession();
+    session.configure(cfg);
+
+    print("");
+    print("== PREVIEW (dry run) ==");
+    print(session.preview());
+    session.printPlan();
+
+    print("");
+    print("== APPLY (verified copy, originals preserved) ==");
+    ImagingConfig applyCfg = new ImagingConfig();
+    applyCfg.sourceDirectory = cfg.sourceDirectory;
+    applyCfg.imageDestination = cfg.imageDestination;
+    applyCfg.movDestination = cfg.movDestination;
+    applyCfg.mp4Destination = cfg.mp4Destination;
+    applyCfg.mpegDestination = cfg.mpegDestination;
+    applyCfg.aviDestination = cfg.aviDestination;
+    applyCfg.recursive = false;
+    applyCfg.dryRun = false;
+    applyCfg.verifyDigest = true;
+    applyCfg.preserveSource = true;
+
+    ImagingSession apply = new ImagingSession();
+    apply.configure(applyCfg);
+    print(apply.preview());
+    print(apply.requestApply(true));
+    print("published=" + apply.published() + " failed=" + apply.failed() + " skipped=" + apply.skipped());
+  }
+}

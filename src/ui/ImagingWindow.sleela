@@ -1,158 +1,132 @@
+<< ImagingWindow — native SleelaUI desktop workspace for the original edition.
+
+   The window drives an in-VM ImagingSession directly: Preview runs a read-only
+   snapshot plan and Apply publishes verified copies. There is no out-of-process
+   bridge, provider library, or plan file to configure. The session constructs
+   and quotes its own shell commands internally, so the UI only collects the six
+   directory roots and the safety toggles.
+
+   Note: this class requires a native display to run (uiAppCreate). The headless
+   ImagingOrganizer demo and ImagingApplication cover display-less execution. >>
 #sleela 2.9
 material;
 class ImagingWindow {
- int app=-1; int theme=-1; int window=-1; int statusLabel=-1;
- int sourceInput=-1; int imageInput=-1; int movInput=-1; int mp4Input=-1; int mpegInput=-1; int aviInput=-1;
- int bridgeInput=-1; int providerInput=-1; int planInput=-1;
- int recursiveCheck=-1; int dryRunCheck=-1; int digestCheck=-1; int confirmCheck=-1;
- int previewButton=-1; int applyButton=-1; int quitButton=-1;
- boolean running=false; boolean previewReady=false; boolean explicitReview=false;
- String reviewedBridge=""; String reviewedProvider=""; String reviewedPlan="";
- ImagingSession session;
- void setStatus(String message) { if (statusLabel>=0) uiWidgetSetText(statusLabel,message); }
- String safeText(int widget) { String value=uiWidgetGetText(widget); return value==null ? "" : value; }
- ImagingConfig readConfig() {
-  ImagingConfig cfg=new ImagingConfig();
-  cfg.sourceDirectory=safeText(sourceInput); cfg.imageDestination=safeText(imageInput);
-  cfg.movDestination=safeText(movInput); cfg.mp4Destination=safeText(mp4Input);
-  cfg.mpegDestination=safeText(mpegInput); cfg.aviDestination=safeText(aviInput);
-  cfg.recursive=(uiWidgetGetToggle(recursiveCheck)==1);
-  cfg.dryRun=(uiWidgetGetToggle(dryRunCheck)==1);
-  cfg.verifyDigest=(uiWidgetGetToggle(digestCheck)==1);
-  cfg.preserveSource=true; cfg.followSymbolicLinks=false;
-  cfg.allowNetwork=false; cfg.deleteSource=false;
-  return cfg;
- }
- < Reject shell metacharacters before placing a path inside a quoted osRun argument. >
- boolean safeCommandPath(String value) {
-  int n=length(value);
-  if (n==0) return false;
-  boolean windows=(osPlatform()=="Windows");
-  int i=0;
-  while (i<n) {
-   String ch=charAt(value,i);
-   if (ch=="\"" || ch=="$" || ch=="`" || ch=="&" || ch=="|" ||
-       ch==";" || ch=="<" || ch==">" || ch=="(" || ch==")" ||
-       ch=="%" || ch=="!" || ch=="^" || ch=="\n" || ch=="\r") return false;
-   if (!windows && ch=="\\") return false;
-   i=i+1;
+  int app = -1; int theme = -1; int window = -1; int statusLabel = -1;
+  int sourceInput = -1; int imageInput = -1; int movInput = -1;
+  int mp4Input = -1; int mpegInput = -1; int aviInput = -1;
+  int recursiveCheck = -1; int dryRunCheck = -1; int digestCheck = -1; int confirmCheck = -1;
+  int previewButton = -1; int applyButton = -1; int quitButton = -1;
+  boolean running = false; boolean previewReady = false;
+  ImagingSession session;
+
+  void setStatus(String message) { if (statusLabel >= 0) uiWidgetSetText(statusLabel, message); }
+  String safeText(int widget) { String value = uiWidgetGetText(widget); return value == null ? "" : value; }
+
+  ImagingConfig readConfig() {
+    ImagingConfig cfg = new ImagingConfig();
+    cfg.sourceDirectory = safeText(sourceInput);
+    cfg.imageDestination = safeText(imageInput);
+    cfg.movDestination = safeText(movInput);
+    cfg.mp4Destination = safeText(mp4Input);
+    cfg.mpegDestination = safeText(mpegInput);
+    cfg.aviDestination = safeText(aviInput);
+    cfg.recursive = (uiWidgetGetToggle(recursiveCheck) == 1);
+    cfg.dryRun = (uiWidgetGetToggle(dryRunCheck) == 1);
+    cfg.verifyDigest = (uiWidgetGetToggle(digestCheck) == 1);
+    cfg.preserveSource = true; cfg.followSymbolicLinks = false;
+    cfg.allowNetwork = false; cfg.deleteSource = false;
+    return cfg;
   }
-  if (windows && charAt(value,n-1)=="\\") return false;
-  return true;
- }
- String quoted(String value) { return "\"" + value + "\""; }
- boolean validBridgeConfiguration(ImagingConfig cfg) {
-  return safeCommandPath(safeText(bridgeInput)) && safeCommandPath(safeText(providerInput)) &&
-   safeCommandPath(safeText(planInput)) && safeCommandPath(cfg.sourceDirectory) &&
-   safeCommandPath(cfg.imageDestination) && safeCommandPath(cfg.movDestination) &&
-   safeCommandPath(cfg.mp4Destination) && safeCommandPath(cfg.mpegDestination) &&
-   safeCommandPath(cfg.aviDestination);
- }
- String bridgeArguments(ImagingConfig cfg) {
-  String command=(osPlatform()=="Windows" ? "call " : "") + quoted(safeText(bridgeInput)) + " --provider " + quoted(safeText(providerInput)) +
-   " --source " + quoted(cfg.sourceDirectory) + " --images " + quoted(cfg.imageDestination) +
-   " --mov " + quoted(cfg.movDestination) + " --mp4 " + quoted(cfg.mp4Destination) +
-   " --mpeg " + quoted(cfg.mpegDestination) + " --avi " + quoted(cfg.aviDestination);
-  if (cfg.recursive) command=command + " --recursive";
-  return command;
- }
- void updateApplySensitivity() {
-  boolean allowed=previewReady && explicitReview && uiWidgetGetToggle(confirmCheck)==1 &&
-   uiWidgetGetToggle(dryRunCheck)==0 && uiWidgetGetToggle(digestCheck)==1;
-  uiWidgetSensitive(applyButton,allowed ? 1 : 0);
- }
- void main() {
-  app=uiAppCreate("com.mearvk.sleela.imaging");
-  if (app<0) { print("SLeeLa Imaging: SleelaUI could not open a native display."); return; }
-  theme=uiThemePreset(3);
-  window=uiWindowCreate(app,"SLeeLa Imaging 2.9",1040,900,theme);
-  if (window<0) { print("SLeeLa Imaging: native window creation failed."); uiAppDestroy(app); app=-1; return; }
-  uiWindowSetBuffering(window,2); uiWindowSetMinSize(window,820,700);
-  int root=uiWindowRoot(window); int page=uiBox(root,0,12);
-  uiWidgetMargin(page,16,16,16,16); uiWidgetExpand(page,1,1);
-  uiHeading(page,"SLeeLa Imaging",26);
-  uiLabel(page,"Local-first photo and video organization. Originals are preserved.");
-  int sourceFrame=uiFrame(page,"Source and destinations");
-  int form=uiBox(sourceFrame,0,8); uiWidgetMargin(form,10,10,10,10);
-  uiLabel(form,"Source directory"); sourceInput=uiEntry(form,"/path/to/source");
-  uiLabel(form,"Images destination"); imageInput=uiEntry(form,"/path/to/organized/Images");
-  int videoFrame=uiFrame(page,"Video destinations");
-  int videos=uiBox(videoFrame,0,8); uiWidgetMargin(videos,10,10,10,10);
-  uiLabel(videos,"MOV destination"); movInput=uiEntry(videos,"/path/to/organized/Videos/MOV");
-  uiLabel(videos,"MP4 / M4V destination"); mp4Input=uiEntry(videos,"/path/to/organized/Videos/MP4");
-  uiLabel(videos,"MPEG / MPG destination"); mpegInput=uiEntry(videos,"/path/to/organized/Videos/MPEG");
-  uiLabel(videos,"AVI destination"); aviInput=uiEntry(videos,"/path/to/organized/Videos/AVI");
-  int bridgeFrame=uiFrame(page,"SLeeLa VM bridge");
-  int bridgeForm=uiBox(bridgeFrame,0,8); uiWidgetMargin(bridgeForm,10,10,10,10);
-  uiLabel(bridgeForm,"Bridge executable"); bridgeInput=uiEntry(bridgeForm,"/path/to/sleela-imaging-bridge");
-  uiLabel(bridgeForm,"Filesystem provider library"); providerInput=uiEntry(bridgeForm,"/path/to/libsleela_imaging_provider.so");
-  uiLabel(bridgeForm,"Reviewed plan file"); planInput=uiEntry(bridgeForm,"/path/to/imaging-review.plan");
-  int optionsFrame=uiFrame(page,"Review and safety");
-  int options=uiBox(optionsFrame,0,6); uiWidgetMargin(options,10,10,10,10);
-  recursiveCheck=uiCheckBox(options,"Scan subdirectories recursively",0);
-  dryRunCheck=uiCheckBox(options,"Dry run — preview only (uncheck to enable Apply)",1);
-  digestCheck=uiCheckBox(options,"Require SHA-256 verification",1);
-  confirmCheck=uiCheckBox(options,"I reviewed the exact plan report and explicitly confirm",0);
-  int actions=uiBox(page,1,10);
-  previewButton=uiButton(actions,"Preview"); uiWidgetSuggested(previewButton,1);
-  applyButton=uiButton(actions,"Apply reviewed plan"); uiWidgetSensitive(applyButton,0);
-  uiWidgetDestructive(applyButton,0); quitButton=uiButton(actions,"Quit");
-  statusLabel=uiInfoBar(page,"Ready. Configure the bridge, provider, and six existing directories. Preview is read-only.",1);
-  uiWidgetSizeRequest(statusLabel,0,48);
-  uiLabel(page,"Review report: append .review.txt to the plan-file path. Apply recomputes and compares the exact plan before writing.");
-  uiLabel(page,"Privacy: no network, telemetry, key upload, database logging, or source deletion.");
-  session=new ImagingSession(); uiWindowShow(window); running=true;
-  while (running) {
-   int dispatched=uiAppPump(app,1);
-   if (dispatched<0) { setStatus("UI event provider reported an error. No media operation was started."); running=false; }
-   if (uiWidgetTakeActivated(previewButton)==1) {
-    ImagingConfig cfg=readConfig(); previewReady=false; explicitReview=false; uiWidgetSensitive(applyButton,0);
-    if (!cfg.isConfigured()) setStatus("BLOCKED: complete all six source and destination paths.");
-    else if (!cfg.verifyDigest) setStatus("BLOCKED: SHA-256 verification must remain enabled.");
-    else if (!validBridgeConfiguration(cfg)) setStatus("BLOCKED: bridge, provider, plan, and directory paths must be safe quoted paths without shell metacharacters.");
-    else {
-     session.configure(cfg);
-     String command=bridgeArguments(cfg) + " --plan-file " + quoted(safeText(planInput));
-     int rc=osRun(command);
-     if (rc==0) {
-      previewReady=true; reviewedBridge=safeText(bridgeInput); reviewedProvider=safeText(providerInput); reviewedPlan=safeText(planInput);
-      setStatus("Preview complete. Review " + safeText(planInput) + ".review.txt. No files were changed.");
-     } else setStatus("Preview failed (process exit " + rc + "). No apply is authorized.");
-    }
-    updateApplySensitivity();
-   }
-   if (uiWidgetTakeActivated(confirmCheck)==1 || uiWidgetTakeActivated(dryRunCheck)==1 ||
-       uiWidgetTakeActivated(digestCheck)==1) {
-    ImagingConfig current=readConfig();
-    if (previewReady && !session.sameConfiguration(current)) {
-     previewReady=false; explicitReview=false; setStatus("Configuration changed. Preview again before applying.");
-    } else if (previewReady && uiWidgetGetToggle(confirmCheck)==1) explicitReview=true;
-    else explicitReview=false;
-    updateApplySensitivity();
-   }
-   if (uiWidgetTakeActivated(applyButton)==1) {
-    ImagingConfig current=readConfig();
-    if (!previewReady || !explicitReview || !session.sameConfiguration(current) ||
-        safeText(bridgeInput)!=reviewedBridge || safeText(providerInput)!=reviewedProvider ||
-        safeText(planInput)!=reviewedPlan) {
-     previewReady=false; explicitReview=false; setStatus("DENIED: configuration differs from the reviewed preview or has not been freshly confirmed. Preview again and confirm.");
-    } else if (current.dryRun || !current.verifyDigest || uiWidgetGetToggle(confirmCheck)!=1) {
-     setStatus("DENIED: disable dry run, retain SHA-256, and explicitly confirm the reviewed report.");
-    } else if (!validBridgeConfiguration(current)) {
-     previewReady=false; explicitReview=false; setStatus("DENIED: one or more command paths are unsafe or invalid.");
-    } else {
-     String command=bridgeArguments(current) + " --expect-plan " + quoted(safeText(planInput)) + " --apply --confirm";
-     int rc=osRun(command);
-     previewReady=false; explicitReview=false; reviewedBridge=""; reviewedProvider=""; reviewedPlan="";
-     if (rc==0) setStatus("Apply completed. Originals were preserved. Review the bridge output for published and failed counts.");
-     else setStatus("Apply denied or failed (process exit " + rc + "). Review the report and preview again.");
-    }
-    uiWidgetSensitive(applyButton,0);
-   }
-   if (uiWidgetTakeActivated(quitButton)==1) { running=false; uiAppQuit(app,0); }
+
+  void updateApplySensitivity() {
+    boolean allowed = previewReady && uiWidgetGetToggle(confirmCheck) == 1 &&
+      uiWidgetGetToggle(dryRunCheck) == 0 && uiWidgetGetToggle(digestCheck) == 1;
+    uiWidgetSensitive(applyButton, allowed ? 1 : 0);
   }
-  uiAppDestroy(app); app=-1;
-  if (theme>=0) uiThemeDestroy(theme);
-  theme=-1;
- }
+
+  void main() {
+    app = uiAppCreate("com.mearvk.sleela.imaging");
+    if (app < 0) { print("SLeeLa Imaging: SleelaUI could not open a native display."); return; }
+    theme = uiThemePreset(3);
+    window = uiWindowCreate(app, "SLeeLa Imaging 2.9", 1040, 820, theme);
+    if (window < 0) { print("SLeeLa Imaging: native window creation failed."); uiAppDestroy(app); app = -1; return; }
+    uiWindowSetBuffering(window, 2); uiWindowSetMinSize(window, 820, 640);
+    int root = uiWindowRoot(window); int page = uiBox(root, 0, 12);
+    uiWidgetMargin(page, 16, 16, 16, 16); uiWidgetExpand(page, 1, 1);
+    uiHeading(page, "SLeeLa Imaging", 26);
+    uiLabel(page, "Local-first photo and video organization. Originals are preserved.");
+    int sourceFrame = uiFrame(page, "Source and destinations");
+    int form = uiBox(sourceFrame, 0, 8); uiWidgetMargin(form, 10, 10, 10, 10);
+    uiLabel(form, "Source directory"); sourceInput = uiEntry(form, "/path/to/source");
+    uiLabel(form, "Images destination"); imageInput = uiEntry(form, "/path/to/organized/Images");
+    int videoFrame = uiFrame(page, "Video destinations");
+    int videos = uiBox(videoFrame, 0, 8); uiWidgetMargin(videos, 10, 10, 10, 10);
+    uiLabel(videos, "MOV destination"); movInput = uiEntry(videos, "/path/to/organized/Videos/MOV");
+    uiLabel(videos, "MP4 / M4V destination"); mp4Input = uiEntry(videos, "/path/to/organized/Videos/MP4");
+    uiLabel(videos, "MPEG / MPG destination"); mpegInput = uiEntry(videos, "/path/to/organized/Videos/MPEG");
+    uiLabel(videos, "AVI destination"); aviInput = uiEntry(videos, "/path/to/organized/Videos/AVI");
+    int optionsFrame = uiFrame(page, "Review and safety");
+    int options = uiBox(optionsFrame, 0, 6); uiWidgetMargin(options, 10, 10, 10, 10);
+    recursiveCheck = uiCheckBox(options, "Scan subdirectories recursively", 0);
+    dryRunCheck = uiCheckBox(options, "Dry run — preview only (uncheck to enable Apply)", 1);
+    digestCheck = uiCheckBox(options, "Require SHA-256 verification", 1);
+    confirmCheck = uiCheckBox(options, "I reviewed the plan and explicitly confirm", 0);
+    int actions = uiBox(page, 1, 10);
+    previewButton = uiButton(actions, "Preview"); uiWidgetSuggested(previewButton, 1);
+    applyButton = uiButton(actions, "Apply reviewed plan"); uiWidgetSensitive(applyButton, 0);
+    quitButton = uiButton(actions, "Quit");
+    statusLabel = uiInfoBar(page, "Ready. Configure six existing, distinct directories. Preview is read-only.", 1);
+    uiWidgetSizeRequest(statusLabel, 0, 48);
+    uiLabel(page, "Privacy: no network, telemetry, key upload, database logging, or source deletion.");
+    session = new ImagingSession(); uiWindowShow(window); running = true;
+
+    while (running) {
+      int dispatched = uiAppPump(app, 1);
+      if (dispatched < 0) { setStatus("UI event provider reported an error. No media operation was started."); running = false; }
+
+      if (uiWidgetTakeActivated(previewButton) == 1) {
+        ImagingConfig cfg = readConfig(); previewReady = false; uiWidgetSensitive(applyButton, 0);
+        if (!cfg.isConfigured()) setStatus("BLOCKED: complete all six source and destination paths.");
+        else if (!cfg.verifyDigest) setStatus("BLOCKED: SHA-256 verification must remain enabled.");
+        else {
+          session.configure(cfg);
+          String result = session.preview();
+          if (session.isPreviewReady()) {
+            previewReady = true;
+            setStatus(result + " Review the plan, then confirm to apply.");
+          } else setStatus(result);
+        }
+        updateApplySensitivity();
+      }
+
+      if (uiWidgetTakeActivated(confirmCheck) == 1 || uiWidgetTakeActivated(dryRunCheck) == 1 ||
+          uiWidgetTakeActivated(digestCheck) == 1) {
+        ImagingConfig current = readConfig();
+        if (previewReady && !session.sameConfiguration(current)) {
+          previewReady = false; setStatus("Configuration changed. Preview again before applying.");
+        }
+        updateApplySensitivity();
+      }
+
+      if (uiWidgetTakeActivated(applyButton) == 1) {
+        ImagingConfig current = readConfig();
+        if (!previewReady || !session.sameConfiguration(current)) {
+          previewReady = false;
+          setStatus("DENIED: configuration differs from the reviewed preview. Preview again and confirm.");
+        } else if (current.dryRun || !current.verifyDigest || uiWidgetGetToggle(confirmCheck) != 1) {
+          setStatus("DENIED: disable dry run, retain SHA-256, and explicitly confirm the reviewed plan.");
+        } else {
+          String result = session.requestApply(true);
+          previewReady = false;
+          setStatus(result);
+        }
+        uiWidgetSensitive(applyButton, 0);
+      }
+
+      if (uiWidgetTakeActivated(quitButton) == 1) { running = false; uiAppQuit(app, 0); }
+    }
+    uiAppDestroy(app); app = -1;
+    if (theme >= 0) uiThemeDestroy(theme);
+    theme = -1;
+  }
 }

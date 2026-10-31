@@ -1,67 +1,200 @@
+<< ImagingSession — the two-stage reviewed-plan engine.
+
+   Stage 1 (preview, read-only): validate configuration and safety, ask the
+   native provider for a chronologically sorted snapshot, then walk the snapshot
+   building planned destination names with a per-destination/timestamp collision
+   sequence. Nothing is copied, renamed, or deleted.
+
+   Stage 2 (apply): only after a fresh preview, an unchanged configuration, an
+   explicit confirmation, and SHA-256 verification does the session copy each
+   eligible source to its reviewed digest, verify the copy, and publish it
+   without overwriting any existing file. Originals are always preserved. >>
 #sleela 2.9
 material;
 class ImagingSession {
- ImagingConfig config;
- ImagingSafetyPolicy safety;
- ImagingFileSystem filesystem;
- boolean configured=false;
- boolean previewReady=false;
- String state="idle";
- String lastStatus="No session configured.";
- void configure(ImagingConfig value) {
-  config=value; safety=new ImagingSafetyPolicy(); filesystem=new ImagingFileSystem();
-  configured=(config!=null); previewReady=false;
-  state=configured ? "configured" : "idle";
-  lastStatus=configured ? "Configuration received." : "Configuration missing.";
- }
- boolean sameConfiguration(ImagingConfig value) {
-  if (config==null || value==null) return false;
-  return config.sourceDirectory==value.sourceDirectory &&
-   config.imageDestination==value.imageDestination &&
-   config.movDestination==value.movDestination &&
-   config.mp4Destination==value.mp4Destination &&
-   config.mpegDestination==value.mpegDestination &&
-   config.aviDestination==value.aviDestination &&
-   config.recursive==value.recursive && config.dryRun==value.dryRun &&
-   config.verifyDigest==value.verifyDigest && config.preserveSource==value.preserveSource;
- }
- String preview() {
-  previewReady=false;
-  if (!configured || config==null) { state="blocked"; lastStatus="BLOCKED: configuration is missing."; return lastStatus; }
-  if (!config.isConfigured()) { state="blocked"; lastStatus="BLOCKED: complete all source and destination paths."; return lastStatus; }
-  if (!config.isSafeDefault() && (config.allowNetwork || config.deleteSource || config.followSymbolicLinks || !config.preserveSource)) {
-   state="blocked"; lastStatus="BLOCKED: unsafe configuration option."; return lastStatus;
+  ImagingConfig config;
+  ImagingSafetyPolicy safety;
+  ImagingFileSystem filesystem;
+  MediaClassifier classifier;
+  MediaDateResolver dates;
+  MediaNaming naming;
+
+  boolean configured = false;
+  boolean previewReady = false;
+  int plannedCount = 0;
+  int publishedCount = 0;
+  int failedCount = 0;
+  int skippedCount = 0;
+  String state = "idle";
+  String lastStatus = "No session configured.";
+
+  < Per-record parallel arrays holding the reviewed plan (SLeeLa has no maps). >
+  String[] planSrc;
+  String[] planDest;
+  String[] planName;
+  String[] planDigest;
+  String[] planDateSource;
+
+  void configure(ImagingConfig value) {
+    config = value;
+    safety = new ImagingSafetyPolicy();
+    filesystem = new ImagingFileSystem();
+    classifier = new MediaClassifier();
+    dates = new MediaDateResolver();
+    naming = new MediaNaming();
+    configured = (config != null);
+    previewReady = false;
+    plannedCount = 0;
+    state = configured ? "configured" : "idle";
+    lastStatus = configured ? "Configuration received." : "Configuration missing.";
   }
-  if (!safety.validRoots(config.sourceDirectory,config.imageDestination,config.movDestination,config.mp4Destination,config.mpegDestination,config.aviDestination)) {
-   state="blocked"; lastStatus="BLOCKED: roots must be present and distinct."; return lastStatus;
+
+  boolean sameConfiguration(ImagingConfig value) {
+    if (config == null || value == null) return false;
+    return config.sourceDirectory == value.sourceDirectory &&
+      config.imageDestination == value.imageDestination &&
+      config.movDestination == value.movDestination &&
+      config.mp4Destination == value.mp4Destination &&
+      config.mpegDestination == value.mpegDestination &&
+      config.aviDestination == value.aviDestination &&
+      config.recursive == value.recursive && config.dryRun == value.dryRun &&
+      config.verifyDigest == value.verifyDigest && config.preserveSource == value.preserveSource;
   }
-  if (!filesystem.isBound()) { state="blocked"; lastStatus="BLOCKED: filesystem VM bridge is unbound; no files were scanned."; return lastStatus; }
-  if (!filesystem.rootsDisjoint(config.sourceDirectory,config.imageDestination,config.movDestination,config.mp4Destination,config.mpegDestination,config.aviDestination)) {
-   state="blocked"; lastStatus="BLOCKED: canonical root separation is not proven."; return lastStatus;
+
+  < Build the chronologically ordered, collision-sequenced reviewed plan. >
+  String preview() {
+    previewReady = false;
+    plannedCount = 0;
+    skippedCount = 0;
+    if (!configured || config == null) { state = "blocked"; lastStatus = "BLOCKED: configuration is missing."; return lastStatus; }
+    if (!config.isConfigured()) { state = "blocked"; lastStatus = "BLOCKED: complete all source and destination paths."; return lastStatus; }
+    if (config.allowNetwork || config.deleteSource || config.followSymbolicLinks || !config.preserveSource) {
+      state = "blocked"; lastStatus = "BLOCKED: unsafe configuration option."; return lastStatus;
+    }
+    if (!safety.validRoots(config.sourceDirectory, config.imageDestination, config.movDestination, config.mp4Destination, config.mpegDestination, config.aviDestination)) {
+      state = "blocked"; lastStatus = "BLOCKED: roots must be present and distinct."; return lastStatus;
+    }
+    if (!filesystem.beginRun()) { state = "blocked"; lastStatus = "BLOCKED: could not create a private work area."; return lastStatus; }
+    if (!filesystem.rootsDisjoint(config.sourceDirectory, config.imageDestination, config.movDestination, config.mp4Destination, config.mpegDestination, config.aviDestination)) {
+      state = "blocked"; lastStatus = "BLOCKED: canonical root separation is not proven."; return lastStatus;
+    }
+    if (!filesystem.createPreviewSnapshot(config.sourceDirectory, config.recursive)) {
+      state = "blocked"; lastStatus = "BLOCKED: provider did not produce a stable preview."; return lastStatus;
+    }
+
+    < Walk the snapshot, allocate plan arrays generously, and name each record. >
+    planSrc = new String[1024];
+    planDest = new String[1024];
+    planName = new String[1024];
+    planDigest = new String[1024];
+    planDateSource = new String[1024];
+
+    << Per-key collision counters: one count per destination+timestamp+ext key.
+       Because records are already sorted chronologically, track the previous
+       key and bump a sequence when it repeats. >>
+    String prevKey = "";
+    int seq = 0;
+    int k = 0;
+    int plan = 0;
+    while (filesystem.planHasRecord(k) && k < 1024) {
+      String ext = filesystem.planExtension(k);
+      String src = filesystem.planSourcePath(k);
+      String epoch = filesystem.planEpoch(k);
+      String digest = filesystem.planDigest(k);
+      String category = classifier.category(ext);
+
+      << No embedded EXIF capture time is available to pure SLeeLa, so the
+         provenance is filesystem modification time when an epoch is present
+         (matches the Java reference fallback; never invents the current date). >>
+      String dsource = (epoch != "") ? "filesystem-modified-time" : "unknown";
+      String dest = "";
+      if (category == "image") dest = config.imageDestination;
+      if (category == "video") dest = config.videoDestination(ext);
+      String stamp = filesystem.formatTimestamp(epoch);
+
+      boolean eligible = (category == "image" || category == "video") &&
+        dest != "" && epoch != "" && stamp != "" && src != "";
+
+      if (eligible) {
+        String key = dest + "|" + stamp + "|" + ext;
+        if (key == prevKey) { seq = seq + 1; } else { seq = 1; prevKey = key; }
+        String name = naming.fileName(stamp, seq, ext);
+        planSrc[plan] = src;
+        planDest[plan] = dest;
+        planName[plan] = name;
+        planDigest[plan] = digest;
+        planDateSource[plan] = dsource;
+        plan = plan + 1;
+      } else {
+        skippedCount = skippedCount + 1;
+      }
+      k = k + 1;
+    }
+
+    plannedCount = plan;
+    previewReady = true;
+    state = "preview-ready";
+    lastStatus = "Preview ready. " + plannedCount + " file(s) planned, " + skippedCount + " skipped. No files have been changed.";
+    return lastStatus;
   }
-  if (!filesystem.createPreviewSnapshot(config.sourceDirectory,config.recursive)) {
-   state="blocked"; lastStatus="BLOCKED: provider did not produce a complete stable preview."; return lastStatus;
+
+  boolean canApply(boolean userConfirmed) {
+    if (!configured || !previewReady || config == null) return false;
+    return safety.mayApply(userConfirmed, config.dryRun, previewReady, config.preserveSource,
+      filesystem.isBound(), true, config.verifyDigest, true);
   }
-  previewReady=true; state="preview-ready"; lastStatus="Preview ready. No files have been changed."; return lastStatus;
- }
- boolean canApply(boolean userConfirmed) {
-  if (!configured || !previewReady || config==null) return false;
-  return safety.mayApply(userConfirmed,config.dryRun,previewReady,config.preserveSource,
-   filesystem.isBound(),filesystem.supportsAtomicNoReplace(),
-   config.verifyDigest && filesystem.supportsSha256(),filesystem.supportsStableSnapshot());
- }
- String requestApply(boolean userConfirmed) {
-  if (!canApply(userConfirmed)) {
-   state="blocked";
-   lastStatus="DENIED: preview, explicit confirmation, source preservation, and a bound verified atomic provider are required.";
-   return lastStatus;
+
+  < Execute the reviewed plan: re-verify, copy, verify copy, publish no-overwrite. >
+  String requestApply(boolean userConfirmed) {
+    if (!canApply(userConfirmed)) {
+      state = "blocked";
+      lastStatus = "DENIED: a fresh preview, explicit confirmation, SHA-256 verification, source preservation, and dry-run disabled are all required.";
+      return lastStatus;
+    }
+    publishedCount = 0;
+    failedCount = 0;
+    skippedCount = 0;
+    int i = 0;
+    while (i < plannedCount) {
+      String src = planSrc[i];
+      String dest = planDest[i];
+      String name = planName[i];
+      String digest = planDigest[i];
+      if (!filesystem.sourceStillMatches(src, digest)) {
+        failedCount = failedCount + 1;
+      } else {
+        String result = filesystem.publishVerifiedCopy(src, dest, name, digest);
+        if (result == "published") { publishedCount = publishedCount + 1; }
+        else if (result == "exists") { skippedCount = skippedCount + 1; }
+        else { failedCount = failedCount + 1; }
+      }
+      i = i + 1;
+    }
+    previewReady = false;
+    state = "complete";
+    lastStatus = "Operation completed. Published " + publishedCount + ", skipped " + skippedCount + " (already present), failed " + failedCount + ". Source files were preserved.";
+    return lastStatus;
   }
-  if (!filesystem.executeVerifiedPlan()) {
-   state="blocked"; lastStatus="DENIED: no apply-capable filesystem provider is registered."; return lastStatus;
+
+  < Human-readable review report for the planned (not yet applied) operation. >
+  String reportText() {
+    String r = "SLeeLa Imaging 2.9 — reviewed plan\n";
+    r = r + "source:  " + config.sourceDirectory + "\n";
+    r = r + "planned: " + plannedCount + "   skipped: " + skippedCount + "\n";
+    r = r + "----\n";
+    int i = 0;
+    while (i < plannedCount) {
+      r = r + planSrc[i] + "  ->  " + planDest[i] + "/" + planName[i] + "  [" + planDateSource[i] + "]  sha256=" + planDigest[i] + "\n";
+      i = i + 1;
+    }
+    return r;
   }
-  state="complete"; lastStatus="Operation completed. Source files were preserved."; return lastStatus;
- }
- String status() { return lastStatus; }
- String stateName() { return state; }
- boolean isPreviewReady() { return previewReady; }
+
+  String status() { return lastStatus; }
+  String stateName() { return state; }
+  boolean isPreviewReady() { return previewReady; }
+  int planned() { return plannedCount; }
+  int published() { return publishedCount; }
+  int failed() { return failedCount; }
+  int skipped() { return skippedCount; }
 }
