@@ -10,7 +10,7 @@ else()
   target_compile_options(sleela-imaging PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 
-add_library(sleela_imaging_provider SHARED native/imaging_provider.cpp)
+add_library(sleela_imaging_provider SHARED native/imaging_provider.cpp native/media_metadata.cpp)
 
 add_library(sleela_imaging_host SHARED native/imaging_host_adapter.cpp)
 target_include_directories(sleela_imaging_host PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/native)
@@ -57,4 +57,4 @@ add_test(NAME imaging-integration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_
 add_executable(imaging-provider-tests tests/test_provider.cpp)
 target_link_libraries(imaging-provider-tests PRIVATE sleela_imaging_provider)
 target_compile_features(imaging-provider-tests PRIVATE cxx_std_17)
-add_test(NAME imaging-provider-contract COMMAND imaging-provider-tests)
+add_test(NAME imaging-provider-contract COMMAND imaging-provider-tests)\nadd_executable(imaging-metadata-tests tests/test_metadata.cpp native/media_metadata.cpp)\ntarget_compile_features(imaging-metadata-tests PRIVATE cxx_std_17)\ntarget_compile_options(imaging-metadata-tests PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive-> $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra;-Wpedantic;-Werror>)\nadd_test(NAME imaging-metadata-fixtures COMMAND imaging-metadata-tests)
