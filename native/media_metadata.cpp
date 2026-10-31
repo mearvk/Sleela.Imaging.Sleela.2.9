@@ -101,7 +101,7 @@ bool parse_date(std::string s,int64_t &ns,bool &zone_known) {
     ns=make_ns(y,mo,d,h,mi,se,nanos,has_zone,zone,zone_known);
     return ns!=0;
 }
-std::string tiff_ascii(Reader &r,uint64_t entry,bool le) {
+std::string tiff_ascii(Reader &r,uint64_t base,uint64_t entry,bool le) {
     uint16_t type=0;uint32_t count=0;
     if(!r.u16(entry+2,le,type)||!r.u32(entry+4,le,count)||type!=2||count==0||count>128)return {};
     uint32_t offset=0;
@@ -117,12 +117,14 @@ bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
     if(!r.u16(tiff+2,le,magic)||magic!=42)return false;
     uint32_t ifd=0;if(!r.u32(tiff+4,le,ifd))return false;
     std::string fallback,original,offset_original,offset_fallback;uint32_t exif_ifd=0;
-    auto scan=[&](uint32_t off,bool exif){
-        if(off==0||uint64_t(off)+2>end)return;
-        uint16_t count=0;if(!r.u16(off,le,count)||count>1024||uint64_t(off)+2+uint64_t(count)*12+4>end)return;
-        for(uint16_t i=0;i<count;++i){const uint64_t e=uint64_t(off)+2+uint64_t(i)*12;uint16_t tag=0;if(!r.u16(e,le,tag))continue;
+    auto scan=[&](uint32_t relative_off,bool exif){
+        if(relative_off==0||uint64_t(relative_off)>end-tiff)return;
+        const uint64_t off=tiff+relative_off;
+        if(off+2>end)return;
+        uint16_t count=0;if(!r.u16(off,le,count)||count>1024||off+2+uint64_t(count)*12+4>end)return;
+        for(uint16_t i=0;i<count;++i){const uint64_t e=off+2+uint64_t(i)*12;uint16_t tag=0;if(!r.u16(e,le,tag))continue;
             if(tag==0x8769&&!exif)r.u32(e+8,le,exif_ifd);
-            if(tag==0x0132&&!exif)fallback=tiff_ascii(r,e,le);
+            if(tag==0x0132&&!exif)fallback=tiff_ascii(r,tiff,e,le);
             if(tag==0x9003&&exif)original=tiff_ascii(r,e,le);
             if(tag==0x9004&&exif&&original.empty())fallback=tiff_ascii(r,e,le);
             if(tag==0x9011&&exif)offset_original=tiff_ascii(r,e,le);
@@ -167,7 +169,7 @@ void qt_scan(Reader &r,uint64_t start,uint64_t end,unsigned depth,CaptureTime &b
             else if(version==1)r.u64be(payload+4,creation);
             if(creation>2082844800ULL&&creation<6000000000ULL){best.found=true;best.unix_time_ns=static_cast<int64_t>(creation-2082844800ULL)*1000000000LL;best.source="quicktime-mvhd";best.timezone_known=true;rank=50;}
         }
-        if(type==std::string("\xa9day",4)){
+        if(type==std::string(1,static_cast<char>(0xa9))+std::string("day")){
             uint64_t q=payload;
             while(q+8<=box_end){bool child_ok=false;uint32_t cs=be32(r,q,child_ok);char ct[4];if(!child_ok||!r.read(q+4,ct,4)||cs<8||cs>box_end-q)break;
                 if(std::string(ct,4)=="data"&&cs>16){std::string date=r.text(q+16,static_cast<size_t>(std::min<uint64_t>(cs-16,128)));int64_t ns=0;bool known=false;if(parse_date(date,ns,known)&&rank<100){best.found=true;best.unix_time_ns=ns;best.source="quicktime-day";best.timezone_known=known;rank=100;}}
