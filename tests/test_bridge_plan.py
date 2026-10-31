@@ -32,24 +32,24 @@ def main():
         original.write_bytes(b"reviewed image bytes")
         plan = root / "review.plan"
         protected_plan = root / "user-data.plan"
-        protected_plan.write_text("do not overwrite this file\\n", encoding="utf-8")
+        protected_plan.write_text("do not overwrite this file\n", encoding="utf-8")
         protected = run(bridge, provider, roots, "--plan-file", protected_plan)
         assert protected.returncode == 6, protected.stdout + protected.stderr
-        assert protected_plan.read_text(encoding="utf-8") == "do not overwrite this file\\n"
+        assert protected_plan.read_text(encoding="utf-8") == "do not overwrite this file\n"
 
         # A prior imaging manifest is also immutable; matching its header is not permission to replace it.
         same_header_plan = root / "same-header.plan"
-        same_header_plan.write_text("SLEELA-IMAGING-PLAN-3\\nuser-owned-bytes\\n", encoding="utf-8")
+        same_header_plan.write_text("SLEELA-IMAGING-PLAN-3\nuser-owned-bytes\n", encoding="utf-8")
         blocked = run(bridge, provider, roots, "--plan-file", same_header_plan)
         assert blocked.returncode == 6, blocked.stdout + blocked.stderr
-        assert same_header_plan.read_text(encoding="utf-8") == "SLEELA-IMAGING-PLAN-3\\nuser-owned-bytes\\n"
+        assert same_header_plan.read_text(encoding="utf-8") == "SLEELA-IMAGING-PLAN-3\nuser-owned-bytes\n"
 
         protected_report_plan = root / "report-protected.plan"
         protected_report = pathlib.Path(str(protected_report_plan) + ".review.txt")
-        protected_report.write_text("SLeeLa Imaging review report\\nuser-owned-report\\n", encoding="utf-8")
+        protected_report.write_text("SLeeLa Imaging review report\nuser-owned-report\n", encoding="utf-8")
         blocked = run(bridge, provider, roots, "--plan-file", protected_report_plan)
         assert blocked.returncode == 6, blocked.stdout + blocked.stderr
-        assert protected_report.read_text(encoding="utf-8") == "SLeeLa Imaging review report\\nuser-owned-report\\n"
+        assert protected_report.read_text(encoding="utf-8") == "SLeeLa Imaging review report\nuser-owned-report\n"
 
         preview = run(bridge, provider, roots, "--plan-file", plan)
         assert preview.returncode == 0, preview.stdout + preview.stderr
