@@ -4,7 +4,7 @@
 
 1. **Configuration:** source root, image/video destinations, recursion, dry-run, and verification preferences.
 2. **Classification:** extension-to-category mapping only.
-3. **Metadata resolution:** capture-time selection through a future format-aware adapter.
+3. **Metadata resolution:** embedded JPEG/TIFF EXIF and QuickTime date extraction with explicit provenance and filesystem-mtime fallback.
 4. **Planning:** candidate records with proposed destination, date provenance, and explicit state.
 5. **Session policy:** root validation, preview freshness, confirmation, no-overwrite, and source-preservation rules.
 6. **SLeeLa UI:** native SleelaUI window and controls; SLeeLa owns event meaning and workflow state.
@@ -28,4 +28,4 @@ src/ui/ImagingWindow.sleela uses documented ui* built-ins to create a native Sle
 
 ## Current boundary
 
-The active scan/preview/apply path is implemented as a VM-mediated process bridge: the SLeeLa UI calls `osRun`, the bridge calls the host adapter, and the adapter loads the native C ABI provider. This is not an in-process VM opcode binding; the SLeeLa `ImagingFileSystem` facade remains unbound. The provider still lacks embedded capture-time parsing and platform-hardening work, and the exact branch has not yet been built or tested. Do not describe the feature as release-verified until the SLeeLa source, bridge, provider, and cross-platform gates pass.
+The active scan/preview/apply path is implemented as a VM-mediated process bridge: the SLeeLa UI calls `osRun`, the bridge calls the host adapter, and the adapter loads the native C ABI provider. This is not an in-process VM opcode binding; the SLeeLa `ImagingFileSystem` facade remains unbound. The provider now parses the supported embedded capture-time fields; vendor-specific metadata and platform-hardening work remain, and the exact branch has not yet been built or tested. Do not describe the feature as release-verified until the SLeeLa source, bridge, provider, and cross-platform gates pass.
