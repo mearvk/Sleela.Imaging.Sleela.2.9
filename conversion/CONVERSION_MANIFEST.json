@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "conversion": {
     "source_repository": "https://github.com/mearvk/Java.Imaging.Java.21",
     "destination_repository": "https://github.com/mearvk/Sleela.Imaging.Sleela.2.9",
@@ -7,18 +7,22 @@
     "target_language_version": "2.9",
     "status": "source-port-in-progress",
     "compiler_verified": false,
-    "runtime_verified": false,
+    "ui_runtime_verified": false,
+    "filesystem_vm_bridge_bound": false,
     "platform_verified": false
   },
   "mappings": [
-    {"source_role":"pennywise.Main","destination":"src/ImagingApplication.sleela","status":"adapted","notes":"Planning/orchestration scaffold; complete scan/apply workflow remains deferred."},
-    {"source_role":"ImageMetadataReader","destination":"src/MediaDateResolver.sleela plus ImagingFileSystem metadata bridge","status":"adapted","notes":"Date precedence modeled; actual format parsers and native metadata reads remain deferred."},
-    {"source_role":"XMLHandler/configuration","destination":"src/ImagingConfig.sleela","status":"adapted","notes":"Typed configuration model; configuration loading and schema validation remain deferred."},
+    {"source_role":"pennywise.Main and standalone Main","destination":"src/ImagingApplication.sleela plus src/ImagingSession.sleela","status":"adapted","notes":"SLeeLa orchestration and fail-closed run session; complete scan/apply remains blocked on the filesystem provider."},
+    {"source_role":"ImageMetadataReader","destination":"src/MediaDateResolver.sleela plus ImagingFileSystem metadata contract","status":"adapted","notes":"Date precedence modeled; actual format parsers and native metadata reads remain deferred."},
+    {"source_role":"XMLHandler/configuration","destination":"src/ImagingConfig.sleela","status":"adapted","notes":"Typed configuration and safe defaults; secure configuration loading and schema validation remain deferred."},
     {"source_role":"extension classification","destination":"src/MediaClassifier.sleela","status":"ported","notes":"Extension classification only; does not establish decoder or metadata support."},
     {"source_role":"date-based naming","destination":"src/MediaNaming.sleela","status":"adapted","notes":"Naming helper scaffold; locale/timezone policy and collision allocation require validation."},
-    {"source_role":"filesystem copy/move behavior","destination":"src/ImagingFileSystem.sleela","status":"deferred","notes":"Bridge methods are sentinels and do not perform I/O."},
-    {"source_role":"network key/certificate/database behavior","destination":"SECURITY.md and docs/SECURITY_MODEL.md","status":"rejected","notes":"Excluded from the local organizer core; any future integration requires separate opt-in design and review."}
+    {"source_role":"filesystem copy/move behavior","destination":"src/ImagingFileSystem.sleela","status":"deferred","notes":"Provider contract remains unbound; no filesystem I/O is performed by this class."},
+    {"source_role":"desktop interface","destination":"src/ui/ImagingWindow.sleela","status":"added","notes":"Native SleelaUI UI authored in SLeeLa; compile and platform runtime checks remain pending."},
+    {"source_role":"safe run state and explicit authorization","destination":"src/ImagingSession.sleela and src/ImagingSafetyPolicy.sleela","status":"adapted","notes":"Dry-run, confirmation, digest, source-preservation, canonical-root, and provider gates fail closed."},
+    {"source_role":"network key/certificate/database/entertainment behavior","destination":"docs/PROTECTED_FINAL_CODING_ANALYSIS.md and docs/SECURITY_MODEL.md","status":"rejected","notes":"Excluded from local organizer core; future integration requires separate opt-in design and review."},
+    {"source_role":"copy-then-delete source behavior","destination":"SLeeLa transaction policy","status":"rejected","notes":"Original media is preserved; no source deletion API is exposed."}
   ],
-  "status_vocabulary": ["ported","adapted","deferred","rejected"],
-  "evidence_policy": "Never mark a feature complete without source review and an executable test or a documented external verification artifact."
+  "status_vocabulary": ["ported","adapted","added","deferred","rejected"],
+  "evidence_policy": "Never mark a feature complete without source review and an executable test or a documented external verification artifact. Evidence must identify the exact commit."
 }

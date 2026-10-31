@@ -1,35 +1,42 @@
 # Porting notes
 
-The Java application's useful workflow is retained: inspect a source folder, classify image/video extensions, resolve a date, sort chronologically, generate date-based names, and route media to destination folders.
+The source workflow in Java.Imaging.Java.21 is to inspect a source folder, classify image/video extensions, resolve a date, sort chronologically, generate date-based names, and route media to destination folders.
 
-Java pennywise.Main becomes ImagingApplication; ImageMetadataReader becomes MediaDateResolver plus a metadata bridge; XMLHandler becomes ImagingConfig; extension checks become MediaClassifier; date formatting becomes MediaNaming.
+The SLeeLa implementation separates the workflow into configuration, classification, date provenance, naming, planning/session state, safety policy, UI, and an OS filesystem provider.
 
-Date precedence in the planned SLeeLa model: embedded capture timestamp, positive filesystem modification timestamp, then unknown (zero). No current timestamp is invented. The Java parser advertised JPEG/TIFF/HEIC/PNG but only dispatched JPEG and TIFF signatures; this port documents that boundary.
+## Behavior changes made for safety
 
-## Native build status
+- The Java entry points copy media and then delete the source without verifying the destination digest. SLeeLa preserves the source and requires byte-count/SHA-256 verification before no-overwrite publication.
+- The configured Java entry point includes usage-triggered public-key transmission, remote key validation, delayed external certificate retrieval, GitHub/Ollama entertainment polling, and optional MySQL logging with a hard-coded credential. These behaviors are excluded from the local organizer core.
+- The Java XML parser is not shown with external-entity hardening. Secure configuration loading remains a separate requirement.
+- The visible Java metadata reader dispatches JPEG EXIF and TIFF, despite broader format claims. Metadata support is not inferred from extension recognition.
+- When capture time and filesystem mtime are both unavailable, SLeeLa records unknown rather than inventing the current time.
 
-A first portable C++17 filesystem engine is now checked in under native/.
-It provides the runnable discovery, classification, mtime-based naming,
-dry-run, confirmed copy, byte-count/SHA-256 verification, no-overwrite publish,
-and CSV reporting path. Build and test instructions are in
-docs/NATIVE_BUILD.md.
+## SLeeLa implementation
 
-This is a native companion engine, not yet a registered SLeeLa VM filesystem
-module. src/ImagingFileSystem.sleela remains an unbound contract. The native
-engine currently uses filesystem modification time only; embedded EXIF and
-QuickTime capture-time parsing remain future work.
+- src/ImagingConfig.sleela — typed local paths and safe defaults.
+- src/MediaClassifier.sleela — extension classification only.
+- src/MediaDateResolver.sleela — date precedence and provenance.
+- src/MediaNaming.sleela — deterministic filename construction.
+- src/MediaRecord.sleela — candidate record.
+- src/ImagingSafetyPolicy.sleela — fail-closed apply and privacy rules.
+- src/ImagingSession.sleela — preview and apply gates.
+- src/ui/ImagingWindow.sleela — native SleelaUI workspace.
+- src/ImagingFileSystem.sleela — provider contract, currently unbound.
+
+The SLeeLa UI uses the documented ui* VM bridge. The filesystem provider does not yet have a real binding; it returns explicit BRIDGE_REQUIRED sentinels and cannot scan or publish files. The native C++ companion is not a substitute for that VM provider.
 
 ## Quality and traceability
 
-- conversion/CONVERSION_MANIFEST.json records source-to-destination mappings and conversion status.
+- conversion/CONVERSION_MANIFEST.json records source-to-destination mappings and status.
 - conversion/BEHAVIOR_MAPPING.md distinguishes preserved behavior from unfinished work.
 - conversion/DECISIONS.md records safety and design decisions.
 - conversion/KNOWN_DIFFERENCES.md records known gaps.
-- docs/TRANSACTION_MODEL.md defines the non-destructive copy/verify/publish sequence.
-- docs/FORMAT_SUPPORT.md distinguishes extension recognition from tested metadata extraction.
-- tests/ contains behavioral and integration case definitions plus the synthetic native integration test.
-- validation/ contains release gates, a checklist, and a cross-platform evidence matrix.
+- docs/PROTECTED_FINAL_CODING_ANALYSIS.md is the change-controlled security/coding baseline.
+- docs/UI_WORKFLOW.md describes the native UI.
+- docs/TRANSACTION_MODEL.md defines the non-destructive copy/verify/publish target.
+- docs/FORMAT_SUPPORT.md distinguishes extension recognition from metadata support.
+- tests/ contains behavioral and native integration cases.
+- validation/ contains release gates and platform evidence requirements.
 
-These documents define requirements; they do not constitute passing tests. Keep
-SLeeLa source compilation, VM bridge binding, and Windows/macOS CI evidence as
-separate gates.
+These documents define requirements; they do not constitute passing tests. Keep SLeeLa compilation, UI rendering, VM provider binding, and platform evidence as separate gates.

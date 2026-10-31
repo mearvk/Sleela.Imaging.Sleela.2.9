@@ -4,14 +4,16 @@ This document separates behavior preserved from implementation details intention
 
 | Original responsibility | SLeeLa destination | Conversion status | Evidence still required |
 |---|---|---|---|
-| Application entry/orchestration | `src/ImagingApplication.sleela` | Adapted | Full scan, sort, plan, apply integration |
-| Image/video extension checks | `src/MediaClassifier.sleela` | Ported | Full extension matrix |
-| Capture date resolution | `src/MediaDateResolver.sleela` | Adapted | Real metadata adapter tests |
-| Filename construction | `src/MediaNaming.sleela` | Adapted | Locale, timezone, collision tests |
-| Configuration model | `src/ImagingConfig.sleela` | Adapted | Parser, validation, persistence |
-| File enumeration and copying | `src/ImagingFileSystem.sleela` | Deferred | Native bridge on all target OSes |
-| Safe operation policy | `src/ImagingSafetyPolicy.sleela` | Adapted | Path containment and transaction tests |
-| Network/key/certificate/database side effects | Not carried into core | Rejected | Any future proposal reviewed separately |
+| Application entry/orchestration | src/ImagingApplication.sleela and src/ImagingSession.sleela | Adapted | Full scan, preview, apply integration |
+| Image/video extension checks | src/MediaClassifier.sleela | Ported | Full extension matrix |
+| Capture date resolution | src/MediaDateResolver.sleela | Adapted | Bounded metadata adapter tests |
+| Filename construction | src/MediaNaming.sleela | Adapted | Locale, timezone, collision tests |
+| Configuration model | src/ImagingConfig.sleela | Adapted | Secure parser, validation, migration |
+| Filesystem enumeration and copying | src/ImagingFileSystem.sleela | Deferred | Native VM provider on all target OSes |
+| Safe operation policy | src/ImagingSafetyPolicy.sleela | Adapted | Canonical path and transaction tests |
+| Native desktop interface | src/ui/ImagingWindow.sleela | Added in SLeeLa | SLeeLa compile and three-platform render tests |
+| Network key/certificate/database/entertainment behavior | Excluded from organizer core | Rejected | Separate opt-in design and security review if ever proposed |
+| Source deletion after copy | Prohibited by SLeeLa policy | Rejected | Source-preservation and failure-injection tests |
 
 ## Status meanings
 

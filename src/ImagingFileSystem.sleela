@@ -1,21 +1,23 @@
-<< OS/VM filesystem adapter contract. >>
 #sleela 2.9
 material;
-< Bind these operations to the native filesystem provider for each target OS.
-  Front-end declarations alone do not perform operating-system I/O. >
 class ImagingFileSystem {
-  String bridgeName="SLeeLa filesystem VM/OS bridge";
-  String bridgeStatus="unbound";
-  String listFiles(String directory, boolean recursive) {
-    return "BRIDGE_REQUIRED:listFiles";
-  }
-  String canonicalPath(String path) { return "BRIDGE_REQUIRED:canonicalPath"; }
-  boolean isRegularFile(String path) { return false; }
-  long readEmbeddedCaptureTime(String path) { return 0; }
-  long modifiedTime(String path) { return 0; }
-  boolean copyAndVerify(String source, String temporaryDestination,
-                        boolean verifyDigest) { return false; }
-  boolean publishAtomically(String temporaryDestination,
-                            String finalDestination) { return false; }
-  boolean writeReport(String destination, String reportText) { return false; }
+ String bridgeName="SLeeLa Imaging filesystem VM/OS provider";
+ String bridgeStatus="unbound";
+ String bridgeVersion="none";
+ boolean isBound() { return bridgeStatus=="bound" && bridgeVersion!="none"; }
+ boolean rootsDisjoint(String source, String images, String mov, String mp4, String mpeg, String avi) { return false; }
+ boolean createPreviewSnapshot(String source, boolean recursive) { return false; }
+ boolean supportsAtomicNoReplace() { return false; }
+ boolean supportsSha256() { return false; }
+ boolean supportsStableSnapshot() { return false; }
+ boolean executeVerifiedPlan() { return false; }
+ String listFiles(String directory, boolean recursive) { return "BRIDGE_REQUIRED:listFiles"; }
+ String canonicalPath(String path) { return "BRIDGE_REQUIRED:canonicalPath"; }
+ boolean isRegularFile(String path) { return false; }
+ long readEmbeddedCaptureTime(String path) { return 0; }
+ long modifiedTime(String path) { return 0; }
+ String copyToExclusiveTemporary(String source, String destinationDirectory) { return "BRIDGE_REQUIRED:copyToExclusiveTemporary"; }
+ boolean verifyByteCountAndSha256(String source, String temporaryDestination) { return false; }
+ boolean publishNoReplace(String temporaryDestination, String finalDestination) { return false; }
+ boolean writeLocalReport(String destination, String reportText) { return false; }
 }

@@ -13,16 +13,25 @@ class ImagingConfig {
   boolean followSymbolicLinks = false;
   boolean verifyDigest = true;
   boolean preserveSource = true;
+  boolean allowNetwork = false;
+  boolean deleteSource = false;
+
   boolean isConfigured() {
-    return sourceDirectory != "" && imageDestination != "" &&
-      movDestination != "" && mp4Destination != "" &&
-      mpegDestination != "" && aviDestination != "";
+    return sourceDirectory!="" && imageDestination!="" &&
+      movDestination!="" && mp4Destination!="" &&
+      mpegDestination!="" && aviDestination!="";
   }
+
   String videoDestination(String ext) {
-    if (ext == ".mov") return movDestination;
-    if (ext == ".mp4" || ext == ".m4v") return mp4Destination;
-    if (ext == ".mpeg" || ext == ".mpg") return mpegDestination;
-    if (ext == ".avi") return aviDestination;
+    if (ext==".mov") return movDestination;
+    if (ext==".mp4" || ext==".m4v") return mp4Destination;
+    if (ext==".mpeg" || ext==".mpg") return mpegDestination;
+    if (ext==".avi") return aviDestination;
     return "";
+  }
+
+  boolean isSafeDefault() {
+    return dryRun && preserveSource && !followSymbolicLinks &&
+      !allowNetwork && !deleteSource && verifyDigest;
   }
 }
