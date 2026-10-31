@@ -203,8 +203,9 @@ int main(int argc, char **argv) {
         static_cast<unsigned long long>(result.failed));
     for (uint64_t i = 0; i < required; ++i) {
         const auto &item = items[static_cast<size_t>(i)];
-        std::printf("%s -> %s [%s, %llu bytes]\n", item.source, item.destination,
-                    item.state, static_cast<unsigned long long>(item.bytes));
+        std::printf("%s -> %s [%s, %llu bytes, timestamp=%s, timezone=%s]\\n", item.source, item.destination,
+                    item.state, static_cast<unsigned long long>(item.bytes), item.timestamp_source,
+                    item.timestamp_timezone_known ? "known" : "unknown");
     }
 
     if (!apply) {
