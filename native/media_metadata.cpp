@@ -174,6 +174,9 @@ void qt_scan(Reader &r,uint64_t start,uint64_t end,unsigned depth,CaptureTime &b
             if(creation>0&&creation<6000000000ULL){best.found=true;best.unix_time_ns=(static_cast<int64_t>(creation)-2082844800LL)*1000000000LL;best.source="quicktime-mvhd";best.timezone_known=true;rank=50;}
         }
         if(type==std::string(1,static_cast<char>(0xa9))+std::string("day")){
+            const auto raw_date=r.text(payload,static_cast<size_t>(std::min<uint64_t>(box_end-payload,128)));
+            int64_t raw_ns=0;bool raw_zone=false;
+            if(parse_date(raw_date,raw_ns,raw_zone)&&rank<100){best.found=true;best.unix_time_ns=raw_ns;best.source="quicktime-day";best.timezone_known=raw_zone;rank=100;}
             uint64_t q=payload;
             while(q+8<=box_end){bool child_ok=false;uint32_t cs=be32(r,q,child_ok);char ct[4];if(!child_ok||!r.read(q+4,ct,4)||cs<8||cs>box_end-q)break;
                 if(std::string(ct,4)=="data"&&cs>16){std::string date=r.text(q+16,static_cast<size_t>(std::min<uint64_t>(cs-16,128)));int64_t ns=0;bool known=false;if(parse_date(date,ns,known)&&rank<100){best.found=true;best.unix_time_ns=ns;best.source="quicktime-day";best.timezone_known=known;rank=100;}}
