@@ -42,7 +42,7 @@ def main():
         same_header_plan.write_text("SLEELA-IMAGING-PLAN-3\\nuser-owned-bytes\\n", encoding="utf-8")
         blocked = run(bridge, provider, roots, "--plan-file", same_header_plan)
         assert blocked.returncode == 6, blocked.stdout + blocked.stderr
-        assert same_header_plan.read_text(encoding="utf-8") == "SLEELA-IMAGING-PLAN-2\\nuser-owned-bytes\\n"
+        assert same_header_plan.read_text(encoding="utf-8") == "SLEELA-IMAGING-PLAN-3\\nuser-owned-bytes\\n"
 
         protected_report_plan = root / "report-protected.plan"
         protected_report = pathlib.Path(str(protected_report_plan) + ".review.txt")
@@ -56,7 +56,9 @@ def main():
         assert plan.is_file(), "preview did not write the exact-plan manifest"
         report = pathlib.Path(str(plan) + ".review.txt")
         assert report.is_file(), "preview did not write the human-readable report"
-        assert "sample.jpg" in report.read_text(encoding="utf-8"), "report omits planned source"\n        assert "timestamp=filesystem-mtime" in report.read_text(encoding="utf-8")\n        assert "timezone=known" in report.read_text(encoding="utf-8")
+        assert "sample.jpg" in report.read_text(encoding="utf-8"), "report omits planned source"
+        assert "timestamp=filesystem-mtime" in report.read_text(encoding="utf-8")
+        assert "timezone=known" in report.read_text(encoding="utf-8")
 
         # Same-size content mutation with the original timestamp restored must invalidate review.
         reviewed_stat = original.stat()
