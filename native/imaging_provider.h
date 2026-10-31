@@ -13,7 +13,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define SLI_PROVIDER_ABI_VERSION 2u
+#define SLI_PROVIDER_ABI_VERSION 3u
 #define SLI_PATH_CAPACITY 4096u
 #define SLI_STATUS_CAPACITY 256u
 typedef struct sli_provider sli_provider;
