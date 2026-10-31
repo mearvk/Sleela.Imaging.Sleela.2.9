@@ -116,7 +116,7 @@ bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
     if(!le&&!(order[0]=='M'&&order[1]=='M'))return false;
     if(!r.u16(tiff+2,le,magic)||magic!=42)return false;
     uint32_t ifd=0;if(!r.u32(tiff+4,le,ifd))return false;
-    std::string fallback,original,offset_original,offset_fallback;uint32_t exif_ifd=0;
+    std::string datetime,digitized,original,offset_original,offset_digitized,offset_generic;uint32_t exif_ifd=0;
     auto scan=[&](uint32_t relative_off,bool exif){
         if(relative_off==0||uint64_t(relative_off)>end-tiff)return;
         const uint64_t off=tiff+relative_off;
@@ -124,9 +124,9 @@ bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
         uint16_t count=0;if(!r.u16(off,le,count)||count>1024||off+2+uint64_t(count)*12+4>end)return;
         for(uint16_t i=0;i<count;++i){const uint64_t e=off+2+uint64_t(i)*12;uint16_t tag=0;if(!r.u16(e,le,tag))continue;
             if(tag==0x8769&&!exif)r.u32(e+8,le,exif_ifd);
-            if(tag==0x0132&&!exif)fallback=tiff_ascii(r,tiff,e,le);
+            if(tag==0x0132&&!exif)datetime=tiff_ascii(r,tiff,e,le);
             if(tag==0x9003&&exif)original=tiff_ascii(r,tiff,e,le);
-            if(tag==0x9004&&exif&&original.empty())fallback=tiff_ascii(r,tiff,e,le);
+            if(tag==0x9004&&exif)digitized=tiff_ascii(r,tiff,e,le);
             if(tag==0x9011&&exif)offset_original=tiff_ascii(r,e,le);
             if(tag==0x9010&&!exif)offset_fallback=tiff_ascii(r,e,le);
         }
@@ -136,7 +136,7 @@ bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
     std::string zone=!offset_original.empty()?offset_original:offset_fallback;
     if(date.size()==19&&!zone.empty())date+=zone;
     bool known=false;int64_t value=0;if(!parse_date(date,value,known))return false;
-    out.found=true;out.unix_time_ns=value;out.source=!original.empty()?"exif-original": "exif-datetime";out.timezone_known=known;return true;
+    out.found=true;out.unix_time_ns=value;out.source=!original.empty()?"exif-original":(!digitized.empty()?"exif-digitized":"exif-datetime");out.timezone_known=known;return true;
 }
 bool jpeg_exif(Reader &r,CaptureTime &out) {
     uint8_t soi[2];if(!r.read(0,soi,2)||soi[0]!=0xff||soi[1]!=0xd8)return false;
