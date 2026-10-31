@@ -47,11 +47,11 @@ The Java XML handler constructs a default DocumentBuilderFactory without showing
 
 The Java ImageMetadataReader advertises more formats than it actually dispatches: its visible implementation handles JPEG APP1/EXIF and TIFF signatures, not HEIC or PNG metadata. It reads untrusted offsets and counts from media bytes and recursively follows EXIF and GPS IFD pointers. It has no demonstrated parser fuzzing, resource limits, timezone policy, or malformed-file corpus.
 
-The SLeeLa port therefore distinguishes extension classification from actual metadata parsing. No format may be advertised as metadata-supported until a bounded parser, malformed fixtures, real-format fixtures, and security review exist. GPS/location tags are not needed for date-based organization and should not be collected by default.
+The SLeeLa native provider now includes a bounded subset parser for JPEG APP1/TIFF EXIF and QuickTime/ISO-BMFF `©day` and `mvhd` dates. It bounds EXIF value offsets to the containing segment, validates TIFF entry ranges and calendar fields, and limits QuickTime box depth/count. Synthetic JPEG EXIF, TIFF EXIF, QuickTime, and malformed-JPEG fixtures have been added, but they have not yet been run. Real camera-file fixtures, fuzzing, and independent parser security review remain release gates. HEIF/HEIC item metadata, maker notes, and GPS are not parsed; GPS/location tags are not needed for date-based organization and should not be collected by default.
 
 ### 2.5 Timestamp fallback
 
-The configured Java entry point falls back to the current date when the filesystem modification time is unavailable. That invents a timestamp and can silently misdate a file. SLeeLa uses an explicit unknown date source and leaves such a file out of an automatic date-based plan until the user resolves it.
+The configured Java entry point falls back to the current date when the filesystem modification time is unavailable. That invents a timestamp and can silently misdate a file. SLeeLa prefers supported embedded capture time, then falls back to the filesystem modification time with explicit `filesystem-mtime` provenance. If the filesystem timestamp itself cannot be read, the item is counted as unknown and excluded; current wall-clock time is never substituted.
 
 ### 2.6 Scope and collision behavior
 
@@ -108,7 +108,7 @@ The current UI performs a read-only Preview by invoking the process bridge and w
 | Window close lifecycle | Verify window-manager close and explicit Quit behavior | NOT RUN |
 | SLeeLa VM process bridge | `osRun` -> `OP_OS_RUN` -> OS process service; bridge invokes provider | IMPLEMENTED IN SOURCE; exact-commit build/test NOT RUN |
 | Provider C ABI | Canonical roots, source digest binding, verified copy, no-replace publication | IMPLEMENTED IN SOURCE; exact-commit tests NOT RUN |
-| Metadata support | Format-specific parser and malformed/real fixture suites | BLOCKED / not implemented |
+| Metadata support | Bounded JPEG/TIFF EXIF and QuickTime parser; synthetic fixtures; real camera fixtures, fuzzing, and independent security review | IMPLEMENTED IN SOURCE; SYNTHETIC FIXTURES ADDED, NOT RUN; REAL-FILE/FUZZ/SECURITY GATES OPEN |
 | Preview determinism | Same source/config snapshot yields same plan | NOT RUN |
 | Apply transaction | Injected failure, same-size/same-mtime content mutation, verification, collision, and recovery tests | REGRESSION TESTS ADDED; NOT RUN |
 | Native companion | Build and CTest for the exact reviewed commit | NOT RUN in this coding pass |
