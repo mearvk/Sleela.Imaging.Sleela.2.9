@@ -22,7 +22,7 @@ A SLeeLa-native source port of the local media-organizing workflow from Java.Ima
 - native/imaging_provider.cpp: shared native C ABI filesystem provider, ABI version 2.
 - native/imaging_provider.h: stable C-compatible interface.
 - native/imaging_host_adapter.cpp/.h: explicit-path, cross-platform dynamic host adapter for the provider.
-- native/HOST_ADAPTER_ABI.md: host-loader handoff and remaining VM binding contract.
+- native/HOST_ADAPTER_ABI.md: explicit-path host loader and VM-mediated process-bridge contract.
 
 ## Safety defaults
 
