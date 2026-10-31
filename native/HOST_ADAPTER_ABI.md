@@ -8,7 +8,7 @@ implicitly.
 ## Contract
 
 - Adapter ABI: `SLI_HOST_ABI_VERSION 1`.
-- Provider ABI: `SLI_PROVIDER_ABI_VERSION 1`; all required exports are checked.
+- Provider ABI: `SLI_PROVIDER_ABI_VERSION 2`; all required exports are checked.
 - Provider path is explicit and must be trusted by the host.
 - The adapter owns the loaded library and provider instance until
   `sli_host_close`.
@@ -27,14 +27,12 @@ these stable C exports:
 `sli_host_abi_version`, `sli_host_open`, `sli_host_close`,
 `sli_host_preview`, and `sli_host_apply`.
 
-The adapter is now implemented, but it is **not yet registered as a VM
-opcode/builtin**. The SLeeLa compiler's existing `ui*` built-ins are
-statically mapped to `OP_UI_CALL`; that mechanism does not automatically
-discover arbitrary shared-library exports. The remaining integration is a
-dedicated imaging VM bridge with bounded VM-local handles, compiler name/arity
-registration, core dispatch, and build linkage. Until that is merged and
-tested, the desktop UI must continue to report the filesystem provider as
-unbound and Apply must remain disabled.
+The adapter is loaded by the standalone `sleela-imaging-bridge` process. The
+SLeeLa desktop application invokes that process through the VM's existing
+`osRun` built-in. This is a deliberate VM-mediated process boundary; it does
+not require arbitrary shared-library export discovery, a new opcode, or native
+pointer values in SLeeLa source. The source-level `ImagingFileSystem` class is
+a future in-process capability facade and is not the active provider binding.
 
 ## Build
 
