@@ -171,7 +171,7 @@ void qt_scan(Reader &r,uint64_t start,uint64_t end,unsigned depth,CaptureTime &b
             uint8_t version=0;if(!r.read(payload,&version,1))return;uint64_t creation=0;
             if(version==0){uint32_t v=0;if(r.u32(payload+4,false,v))creation=v;}
             else if(version==1){if(payload+12>box_end)return;r.u64be(payload+4,creation);}
-            if(creation>0&&creation<6000000000ULL){best.found=true;best.unix_time_ns=static_cast<int64_t>(creation-2082844800ULL)*1000000000LL;best.source="quicktime-mvhd";best.timezone_known=true;rank=50;}
+            if(creation>0&&creation<6000000000ULL){best.found=true;best.unix_time_ns=(static_cast<int64_t>(creation)-2082844800LL)*1000000000LL;best.source="quicktime-mvhd";best.timezone_known=true;rank=50;}
         }
         if(type==std::string(1,static_cast<char>(0xa9))+std::string("day")){
             uint64_t q=payload;
