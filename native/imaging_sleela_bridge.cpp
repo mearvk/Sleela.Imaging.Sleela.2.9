@@ -26,7 +26,7 @@ std::string hex(const std::string &value) {
 std::string manifest(const sli_config &config, const sli_result &result,
                      const std::vector<sli_item> &items, uint64_t count) {
     std::ostringstream out;
-    out << "SLEE LA-IMAGING-PLAN-1\n";
+    out << "SLEELA-IMAGING-PLAN-1\n";
     out << "source=" << hex(config.source) << "\n";
     out << "images=" << hex(config.images) << "\n";
     out << "mov=" << hex(config.mov) << "\n";
