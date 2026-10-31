@@ -1,4 +1,4 @@
-/* SLeeLa Imaging 2.9: portable, non-destructive native filesystem engine. */
+/* SLeeLa Imaging 2.9: portable, non-destructive native filesystem engine. */\n#include "media_metadata.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -32,7 +32,7 @@ std::string hashFile(const fs::path&p){std::ifstream f(p,std::ios::binary);if(!f
 std::string lower(std::string s){for(char&c:s)if(c>='A'&&c<='Z')c=char(c-'A'+'a');return s;}
 std::string extOf(const fs::path&p){return lower(p.extension().string());}
 std::string category(const std::string&e){static const std::vector<std::string>i={".jpg",".jpeg",".heic",".png",".tiff",".tif",".bmp",".gif",".webp"},v={".mov",".mp4",".mpeg",".mpg",".avi",".m4v"};if(std::find(i.begin(),i.end(),e)!=i.end())return"image";if(std::find(v.begin(),v.end(),e)!=v.end())return"video";return"unsupported";}
-std::string stamp(fs::file_time_type ft){auto st=std::chrono::time_point_cast<std::chrono::system_clock::duration>(ft-fs::file_time_type::clock::now()+std::chrono::system_clock::now());auto t=std::chrono::system_clock::to_time_t(st);if(t<=0)return{};std::tm tm{};
+std::string stamp_system_ns(int64_t ns){auto st=std::chrono::system_clock::time_point(std::chrono::nanoseconds(ns));auto t=std::chrono::system_clock::to_time_t(st);if(t<=0)return{};std::tm tm{};
 #ifdef _WIN32
  localtime_s(&tm,&t);
 #else
@@ -46,7 +46,7 @@ struct Opt{fs::path src,img,mov,mp4,mpeg,avi,report;bool recursive=false,apply=f
 void usage(){std::cout<<"SLeeLa Imaging 2.9\nRequired: --source DIR --images DIR --mov DIR --mp4 DIR --mpeg DIR --avi DIR\nOptional: --recursive --apply --confirm --report FILE\nDry-run is the default; source files are never deleted or modified.\n";}
 Opt parse(int ac,char**av){Opt o;for(int i=1;i<ac;i++){std::string a=av[i];auto val=[&](){if(i+1>=ac)throw std::runtime_error("missing value: "+a);return fs::path(av[++i]);};if(a=="--source")o.src=val();else if(a=="--images")o.img=val();else if(a=="--mov")o.mov=val();else if(a=="--mp4")o.mp4=val();else if(a=="--mpeg")o.mpeg=val();else if(a=="--avi")o.avi=val();else if(a=="--report")o.report=val();else if(a=="--recursive")o.recursive=true;else if(a=="--apply")o.apply=true;else if(a=="--confirm")o.confirm=true;else if(a=="--help"||a=="-h"){usage();std::exit(0);}else throw std::runtime_error("unknown option: "+a);}return o;}
 fs::path canonDir(const fs::path&p,const char*n){std::error_code e;auto c=fs::canonical(p,e);if(e||!fs::is_directory(c))throw std::runtime_error(std::string(n)+" must be an existing directory: "+p.string());return c;}
-struct Item{fs::path src,dst;std::string date,ext,hash,state="planned";uintmax_t bytes=0;};
+struct Item{fs::path src,dst;std::string date,ext,date_source,hash,state="planned";uintmax_t bytes=0;};
 void run(Opt&o){
  o.src=canonDir(o.src,"source");o.img=canonDir(o.img,"images");o.mov=canonDir(o.mov,"MOV");o.mp4=canonDir(o.mp4,"MP4");o.mpeg=canonDir(o.mpeg,"MPEG");o.avi=canonDir(o.avi,"AVI");
  std::vector<fs::path>roots={o.src,o.img,o.mov,o.mp4,o.mpeg,o.avi};for(size_t i=0;i<roots.size();i++)for(size_t j=i+1;j<roots.size();j++)if(roots[i]==roots[j]||nested(roots[i],roots[j])||nested(roots[j],roots[i]))throw std::runtime_error("source and destination roots must be distinct and non-overlapping");
@@ -55,11 +55,11 @@ void run(Opt&o){
  std::vector<fs::path>found;auto add=[&](const fs::directory_entry&e){std::error_code ec;if(e.is_symlink(ec)||ec||!e.is_regular_file(ec)||ec)return;auto x=extOf(e.path());if(category(x)!="unsupported"){auto c=fs::canonical(e.path(),ec);if(!ec&&inside(c,o.src))found.push_back(c);}};
  if(o.recursive){fs::recursive_directory_iterator i(o.src,fs::directory_options::skip_permission_denied),end;for(;i!=end;){std::error_code ec;if(i->is_symlink(ec))i.disable_recursion_pending();else if(!ec)add(*i);i.increment(ec);}}else for(fs::directory_iterator i(o.src),end;i!=end;++i)add(*i);
  std::sort(found.begin(),found.end());std::vector<Item>items;
- for(auto&p:found){auto e=extOf(p),cat=category(e);fs::path d=cat=="image"?o.img:(e==".mov"?o.mov:(e==".mp4"||e==".m4v")?o.mp4:(e==".mpeg"||e==".mpg")?o.mpeg:o.avi);std::error_code ec;auto t=stamp(fs::last_write_time(p,ec));if(ec||t.empty())continue;auto z=fs::file_size(p,ec);if(ec)continue;items.push_back({p,d,t,e,"","planned",z});}
+ for(auto&p:found){auto e=extOf(p),cat=category(e);fs::path d=cat=="image"?o.img:(e==".mov"?o.mov:(e==".mp4"||e==".m4v")?o.mp4:(e==".mpeg"||e==".mpg")?o.mpeg:o.avi);std::error_code ec;auto ft=fs::last_write_time(p,ec);if(ec)continue;const auto metadata=sleela_media::read_capture_time(p.string());const auto t=metadata.found?stamp_system_ns(metadata.unix_time_ns):stamp_system_ns(std::chrono::time_point_cast<std::chrono::nanoseconds>(ft-fs::file_time_type::clock::now()+std::chrono::system_clock::now()).time_since_epoch().count());if(t.empty())continue;auto z=fs::file_size(p,ec);if(ec)continue;items.push_back({p,d,t,e,metadata.found?metadata.source:"filesystem-mtime","","planned",z});}
  std::sort(items.begin(),items.end(),[](const Item&a,const Item&b){return a.date==b.date?a.src<b.src:a.date<b.date;});std::map<std::string,unsigned>seq;
  for(auto&x:items){unsigned n=++seq[x.date+"|"+x.ext];std::ostringstream s;s<<x.date<<"_"<<std::setw(3)<<std::setfill('0')<<n<<x.ext;x.dst/=s.str();if(fs::exists(x.dst)){x.state="collision-skipped";std::cout<<"SKIP "<<x.dst<<"\n";continue;}if(!o.apply){std::cout<<"PLAN "<<x.src<<" -> "<<x.dst<<"\n";continue;}
   fs::path tmp=x.dst.parent_path()/(x.dst.filename().string()+".sleela-tmp-"+std::to_string(items.size()+n));try{if(fs::exists(tmp))throw std::runtime_error("temporary path exists");fs::copy_file(x.src,tmp,fs::copy_options::none);if(fs::file_size(tmp)!=x.bytes)throw std::runtime_error("byte-count verification failed");auto a=hashFile(x.src),b=hashFile(tmp);if(a!=b)throw std::runtime_error("SHA-256 verification failed");x.hash=b;std::error_code ec;fs::create_hard_link(tmp,x.dst,ec);if(ec)throw std::runtime_error("atomic no-overwrite publish failed: "+ec.message());x.state="published-verified";fs::remove(tmp,ec);if(ec)std::cerr<<"WARN temporary link remains: "<<tmp<<"\n";std::cout<<"DONE "<<x.dst<<" sha256="<<x.hash<<"\n";}catch(const std::exception&e){std::error_code ec;fs::remove(tmp,ec);x.state="failed";std::cerr<<"FAIL "<<x.src<<": "<<e.what()<<"\n";}}
- if(!o.report.empty()){if(fs::exists(o.report))throw std::runtime_error("report exists; refusing overwrite");std::ofstream f(o.report,std::ios::binary);if(!f)throw std::runtime_error("cannot create report");f<<"source,destination,bytes,date_source,status,sha256\n";for(auto&x:items)f<<csv(x.src.string())<<','<<csv(x.dst.string())<<','<<x.bytes<<','<<csv("filesystem-modified-time")<<','<<csv(x.state)<<','<<csv(x.hash)<<'\n';if(!f)throw std::runtime_error("report write failed");}
+ if(!o.report.empty()){if(fs::exists(o.report))throw std::runtime_error("report exists; refusing overwrite");std::ofstream f(o.report,std::ios::binary);if(!f)throw std::runtime_error("cannot create report");f<<"source,destination,bytes,date_source,status,sha256\n";for(auto&x:items)f<<csv(x.src.string())<<','<<csv(x.dst.string())<<','<<x.bytes<<','<<csv(x.date_source)<<','<<csv(x.state)<<','<<csv(x.hash)<<'\n';if(!f)throw std::runtime_error("report write failed");}
  std::cout<<"Summary: found="<<found.size()<<" eligible="<<items.size()<<" mode="<<(o.apply?"apply":"dry-run")<<"\n";
 }
 }
