@@ -11,9 +11,10 @@ src/ui/ImagingWindow.sleela is the SLeeLa desktop entry point. It creates a nati
 3. Choose whether to recurse into subdirectories.
 4. Leave Dry run enabled (default).
 5. Keep digest verification enabled (default).
-6. Select Preview. The SLeeLa session validates the configuration and checks provider readiness.
-7. Review the plan and explicitly confirm it before any future apply operation.
-8. Apply remains unavailable until the filesystem provider and all transaction gates are implemented and verified.
+6. Select Preview. The UI validates the six paths and invokes `sleela-imaging-bridge` through the SLeeLa VM's `osRun` built-in. The bridge scans read-only and writes a new review manifest plus a human-readable report.
+7. Review the complete `.review.txt` report and keep the generated manifest unchanged. Existing review files are never overwritten; choose a new plan path for another preview.
+8. To apply, turn Dry run off and Preview again (the changed option invalidates the prior review), then explicitly confirm the new plan. Apply becomes available only while the configuration, bridge, provider, plan path, digest setting, and confirmation still match.
+9. Apply recomputes the plan, compares the full manifest byte-for-byte, checks the preview-time SHA-256 of each source, verifies each staged copy, and publishes without overwriting.
 
 ## UI controls
 
@@ -26,8 +27,8 @@ src/ui/ImagingWindow.sleela is the SLeeLa desktop entry point. It creates a nati
 | Dry run | On | Preview-only; no writes |
 | Verify SHA-256 | On | Required before future publication |
 | Confirm exact plan | Off | Explicit user authorization; never pre-checked |
-| Preview | Enabled | Validates state; currently reports the unbound provider |
-| Apply | Disabled | No operation can bypass the missing provider/release gates |
+| Preview | Enabled | Invokes the configured process bridge for a read-only scan and reviewed-plan report |
+| Apply | Disabled until gates pass | Requires a fresh matching preview, Dry run off, SHA-256 on, and explicit confirmation |
 | Quit | — | Closes the UI session |
 
 ## SleelaUI composition
@@ -36,8 +37,10 @@ The source uses documented built-ins: uiAppCreate, uiThemePreset, uiWindowCreate
 
 The native toolkit owns rendering and input. SLeeLa owns the meaning of each control and the workflow state. The filesystem provider is a separate boundary.
 
-## Current limitation
+## Current integration boundary
 
-src/ImagingFileSystem.sleela is a contract only. Its operations return BRIDGE_REQUIRED or false, and it cannot be marked bound from application code. Consequently the current Preview action deliberately does not enumerate files and Apply cannot be enabled. The next implementation step is a real SLeeLa VM/OS filesystem provider with canonical path handling, enumeration, metadata reads, verified copy, and atomic no-overwrite publication.
+`src/ui/ImagingWindow.sleela` uses the SLeeLa VM's existing `osRun` built-in to invoke `sleela-imaging-bridge`. The compiler lowers `osRun` to `OP_OS_RUN`, and the VM core dispatches it through the host OS process layer. The bridge loads the native C ABI host adapter and filesystem provider in the child process. This is a real VM-mediated process boundary, but not an in-process VM opcode/native binding.
+
+`src/ImagingFileSystem.sleela` remains a design facade whose direct filesystem capability methods return false or `BRIDGE_REQUIRED`; the active UI does not call those methods. The bridge/provider performs canonical-root validation, read-only enumeration, digest-bound review, verified copy, and no-overwrite publication. Remaining release blockers include EXIF/QuickTime metadata parsing, race-free descriptor-relative operations, asynchronous cancellation, SLeeLa source compilation, and cross-platform runtime evidence.
 
 The native window-manager close lifecycle has not yet been exercised. Until that runtime check is completed, use the explicit Quit control to close the application.
