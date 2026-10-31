@@ -127,13 +127,14 @@ bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
             if(tag==0x0132&&!exif)datetime=tiff_ascii(r,tiff,e,le);
             if(tag==0x9003&&exif)original=tiff_ascii(r,tiff,e,le);
             if(tag==0x9004&&exif)digitized=tiff_ascii(r,tiff,e,le);
-            if(tag==0x9011&&exif)offset_original=tiff_ascii(r,e,le);
-            if(tag==0x9010&&!exif)offset_fallback=tiff_ascii(r,e,le);
+            if(tag==0x9011&&exif)offset_original=tiff_ascii(r,tiff,e,le);
+            if(tag==0x9012&&exif)offset_digitized=tiff_ascii(r,tiff,e,le);
+            if(tag==0x9010&&exif)offset_generic=tiff_ascii(r,tiff,e,le);
         }
     };
     scan(ifd,false);if(exif_ifd)scan(exif_ifd,true);
-    std::string date=!original.empty()?original:fallback;if(date.empty())return false;
-    std::string zone=!offset_original.empty()?offset_original:offset_fallback;
+    std::string date=!original.empty()?original:(!digitized.empty()?digitized:datetime);if(date.empty())return false;
+    std::string zone=!original.empty()?offset_original:(!digitized.empty()?offset_digitized:offset_generic);
     if(date.size()==19&&!zone.empty())date+=zone;
     bool known=false;int64_t value=0;if(!parse_date(date,value,known))return false;
     out.found=true;out.unix_time_ns=value;out.source=!original.empty()?"exif-original":(!digitized.empty()?"exif-digitized":"exif-datetime");out.timezone_known=known;return true;
