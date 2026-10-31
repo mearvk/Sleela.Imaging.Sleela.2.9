@@ -35,8 +35,9 @@ and [docs/NATIVE_BUILD.md](docs/NATIVE_BUILD.md).
 
 ## Quality status
 
-The native C++ engine has been built and its synthetic integration test has
-passed locally on Linux. Windows and macOS evidence is pending the CI matrix.
+The native C++ development prototype has been built and its synthetic
+integration test has passed locally on Linux. The exact checked-in revision is
+awaiting its GitHub Actions result; Windows and macOS evidence is also pending.
 SLeeLa source compilation and VM bridge binding remain separate release gates;
 a documented requirement or test case is not a passing test. See
 [validation/QUALITY_GATES.md](validation/QUALITY_GATES.md).
