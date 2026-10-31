@@ -33,7 +33,7 @@ A SLeeLa-native source port of the local media-organizing workflow from Java.Ima
 - Existing destinations are never silently overwritten.
 - Apply requires a fresh preview, explicit confirmation, source revalidation, verified copy, and atomic no-overwrite publication.
 - No key upload, remote certificate collection, database logging, network polling, telemetry, or media upload is included in the organizer core.
-- Missing timestamps remain unknown; the application does not invent current dates.
+- Missing or malformed embedded capture dates fall back to filesystem modification time with explicit provenance; the application never invents the current date.
 
 ## Current implementation status
 
