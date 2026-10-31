@@ -47,7 +47,8 @@ std::string manifest(const sli_config &config, const sli_result &result,
         const auto &item = items[static_cast<size_t>(i)];
         out << "item=" << hex(item.source) << "|" << hex(item.destination) << "|"
             << hex(item.state) << "|" << item.bytes << "|" << item.modified_time_ns
-            << "|" << hex(item.sha256) << "\n";
+            << "|" << hex(item.sha256) << "|" << hex(item.timestamp_source)
+            << "|" << item.organize_time_ns << "\n";
     }
     return out.str();
 }
@@ -104,7 +105,7 @@ bool write_review_text(const std::string &path, const sli_result &result,
     for (uint64_t i = 0; i < count; ++i) {
         const auto &item = items[static_cast<size_t>(i)];
         report << display_path(item.source) << " -> " << display_path(item.destination)
-               << " [" << item.state << ", " << item.bytes << " bytes]\n";
+               << " [" << item.state << ", " << item.bytes << " bytes, timestamp=" << item.timestamp_source << "]\n";
     }
     return write_no_replace(report_path, report.str());
 }
