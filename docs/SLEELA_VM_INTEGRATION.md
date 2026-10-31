@@ -77,6 +77,4 @@ After configuring and building, run the focused test with:
 ctest --test-dir build -R imaging-bridge-reviewed-plan --output-on-failure
 ```
 
-The test verifies that an unrelated existing plan file is not overwritten,
-that a changed source invalidates a reviewed plan without publishing anything,
-and that a fresh exact plan applies while preserving the original source.
+The tests verify that existing plan and report files (including matching-format headers) are not overwritten, that changed source bytes invalidate a reviewed plan even when size and modification time are restored, and that a fresh exact plan applies while preserving the original source.
