@@ -7,6 +7,7 @@ class ImagingWindow {
  int recursiveCheck=-1; int dryRunCheck=-1; int digestCheck=-1; int confirmCheck=-1;
  int previewButton=-1; int applyButton=-1; int quitButton=-1;
  boolean running=false; boolean previewReady=false; boolean explicitReview=false;
+ String reviewedBridge=""; String reviewedProvider=""; String reviewedPlan="";
  ImagingSession session;
  void setStatus(String message) { if (statusLabel>=0) uiWidgetSetText(statusLabel,message); }
  String safeText(int widget) { String value=uiWidgetGetText(widget); return value==null ? "" : value; }
@@ -114,7 +115,7 @@ class ImagingWindow {
      String command=bridgeArguments(cfg) + " --plan-file " + quoted(safeText(planInput));
      int rc=osRun(command);
      if (rc==0) {
-      previewReady=true;
+      previewReady=true; reviewedBridge=safeText(bridgeInput); reviewedProvider=safeText(providerInput); reviewedPlan=safeText(planInput);
       setStatus("Preview complete. Review " + safeText(planInput) + ".review.txt. No files were changed.");
      } else setStatus("Preview failed (process exit " + rc + "). No apply is authorized.");
     }
@@ -131,7 +132,9 @@ class ImagingWindow {
    }
    if (uiWidgetTakeActivated(applyButton)==1) {
     ImagingConfig current=readConfig();
-    if (!previewReady || !explicitReview || !session.sameConfiguration(current)) {
+    if (!previewReady || !explicitReview || !session.sameConfiguration(current) ||
+        safeText(bridgeInput)!=reviewedBridge || safeText(providerInput)!=reviewedProvider ||
+        safeText(planInput)!=reviewedPlan) {
      previewReady=false; explicitReview=false; setStatus("DENIED: configuration differs from the reviewed preview or has not been freshly confirmed. Preview again and confirm.");
     } else if (current.dryRun || !current.verifyDigest || uiWidgetGetToggle(confirmCheck)!=1) {
      setStatus("DENIED: disable dry run, retain SHA-256, and explicitly confirm the reviewed report.");
@@ -140,7 +143,7 @@ class ImagingWindow {
     } else {
      String command=bridgeArguments(current) + " --expect-plan " + quoted(safeText(planInput)) + " --apply --confirm";
      int rc=osRun(command);
-     previewReady=false; explicitReview=false;
+     previewReady=false; explicitReview=false; reviewedBridge=""; reviewedProvider=""; reviewedPlan="";
      if (rc==0) setStatus("Apply completed. Originals were preserved. Review the bridge output for published and failed counts.");
      else setStatus("Apply denied or failed (process exit " + rc + "). Review the report and preview again.");
     }
