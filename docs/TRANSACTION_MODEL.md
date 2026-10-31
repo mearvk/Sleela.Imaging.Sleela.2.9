@@ -4,8 +4,8 @@
 
 1. **Discover:** enumerate regular files under the canonical source root. Do not follow symbolic links by default.
 2. **Classify:** accept only explicitly supported categories; preserve unknown files untouched.
-3. **Resolve metadata:** record value, source, and confidence/provenance. Unknown remains unknown.
-4. **Plan:** compute final paths, detect collisions, and capture a SHA-256 digest for every eligible source before any write. The reviewed manifest binds paths, options, sizes, timestamps, and those digests.
+3. **Resolve metadata:** prefer EXIF DateTimeOriginal, then DateTimeDigitized/DateTime; for MOV/MP4/M4V prefer QuickTime ©day, then mvhd. Record the selected value, source, and timezone confidence. Fall back to filesystem modification time with explicit provenance; never invent a date.
+4. **Plan:** compute final paths, detect collisions, and capture a SHA-256 digest for every eligible source before any write. The reviewed manifest binds paths, options, sizes, original modification timestamps, effective organizer timestamps, timestamp provenance, and those digests.
 5. **Confirm:** require an explicit user confirmation for the exact plan. Dry-run remains the default.
 6. **Stage:** copy to a unique temporary file in the destination filesystem.
 7. **Verify:** re-hash the source against its preview-time digest, then compare staged byte count and SHA-256 against that same reviewed digest.
