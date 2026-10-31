@@ -11,7 +11,7 @@ A gate is PASS only when its evidence is recorded for the exact commit under rev
 | SLeeLa source compile | Compiler version and successful source check/compile | NOT RUN |
 | SleelaUI render | Native window and interaction check on each target OS | NOT RUN |
 | Window close lifecycle | Window-manager close and explicit Quit tests | NOT RUN |
-| Native provider shared library | C ABI build, ABI version check, OpenSSL linkage | IMPLEMENTED; BUILD NOT RUN |
+| Native provider shared library | C ABI build and ABI version check | IMPLEMENTED; BUILD NOT RUN |
 | Filesystem VM provider | Bound implementation and contract tests | BLOCKED: SLeeLa host adapter is not implemented |
 | Canonical path safety | Symlink, traversal, overlap, and alias tests | NOT RUN |
 | Dry-run integration | Before/after filesystem comparison | NOT RUN |
@@ -24,4 +24,4 @@ A gate is PASS only when its evidence is recorded for the exact commit under rev
 | Security review | Threat checklist and reviewed findings | Analysis drafted; independent review NOT RUN |
 | Documentation | Links, support claims, and version consistency | Updated; review required |
 
-The provider uses OpenSSL Crypto for SHA-256 and C++17 filesystem operations. Do not mark the SLeeLa VM bridge bound or enable UI Apply until a host adapter and runtime integration test exist. Keep evidence tied to the exact commit SHA.
+The provider uses a dependency-free SHA-256 implementation and C++17 filesystem operations. Do not mark the SLeeLa VM bridge bound or enable UI Apply until a host adapter and runtime integration test exist. Keep evidence tied to the exact commit SHA.
