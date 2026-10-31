@@ -24,9 +24,10 @@ std::string hex(const std::string &value) {
     return out;
 }
 std::string manifest(const sli_config &config, const sli_result &result,
-                     const std::vector<sli_item> &items, uint64_t count) {
+                     const std::vector<sli_item> &items, uint64_t count, const std::string &provider_path) {
     std::ostringstream out;
     out << "SLEELA-IMAGING-PLAN-1\n";
+    out << "provider=" << hex(provider_path) << "\n";
     out << "source=" << hex(config.source) << "\n";
     out << "images=" << hex(config.images) << "\n";
     out << "mov=" << hex(config.mov) << "\n";
@@ -71,10 +72,10 @@ std::string display_path(const char *value) {
     return out;
 }
 bool write_review_text(const std::string &path, const sli_result &result,
-                       const std::vector<sli_item> &items, uint64_t count) {
+                       const std::vector<sli_item> &items, uint64_t count, const std::string &provider_path) {
     std::ofstream file(path + ".review.txt", std::ios::binary | std::ios::trunc);
     if (!file) return false;
-    file << "SLeeLa Imaging review report\n"
+    file << "SLeeLa Imaging review report\nProvider: " << display_path(provider_path.c_str()) << "\n"
          << "Files seen: " << result.files_seen << "\nEligible: " << result.eligible
          << "\nUnknown timestamp: " << result.unknown_timestamp
          << "\nDestination collisions: " << result.collisions
@@ -170,7 +171,7 @@ int main(int argc, char **argv) {
         sli_host_close(host);
         return 4;
     }
-    const std::string current_manifest = manifest(config, result, items, required);
+    const std::string current_manifest = manifest(config, result, items, required, provider);
     std::printf("PREVIEW %s\nseen=%llu eligible=%llu unknown_timestamp=%llu collisions=%llu failed=%llu\n",
         result.status, static_cast<unsigned long long>(result.files_seen),
         static_cast<unsigned long long>(result.eligible),
@@ -185,7 +186,7 @@ int main(int argc, char **argv) {
 
     if (!apply) {
         if (!write_manifest(plan_file, current_manifest) ||
-            !write_review_text(plan_file, result, items, required)) {
+            !write_review_text(plan_file, result, items, required, provider)) {
             std::fprintf(stderr, "ERROR: could not write review manifest: %s\n", plan_file.c_str());
             sli_host_close(host);
             return 6;
