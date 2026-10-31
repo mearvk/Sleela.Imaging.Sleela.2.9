@@ -44,7 +44,7 @@ sleela-imaging-bridge --provider PROVIDER --source SOURCE --images IMAGES \
 The bridge reopens the provider, recomputes the current preview, and compares
 the complete deterministic manifest byte-for-byte with the reviewed file.
 Any changed root, option, file, destination, collision state, size, timestamp,
-source digest, or summary denies apply. Only after an exact match does it apply
+source digest, effective timestamp, timestamp provenance, or summary denies apply. Only after an exact match does it apply
 that same in-process plan. The provider re-hashes each source before copying
 and verifies the temporary copy against the reviewed digest before publishing
 without replacing an existing destination.
