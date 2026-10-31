@@ -24,8 +24,9 @@ sleela-imaging-bridge --provider PROVIDER --source SOURCE --images IMAGES \
 
 The manifest records the six configured roots, scan options, summary counts,
 and every planned source/destination pair with byte count and modification
-timestamp. Path strings are hex-encoded in the manifest so unusual characters
-cannot change its record boundaries.
+timestamp. The provider-library path is also bound into the manifest. Path
+strings are hex-encoded so unusual characters cannot change record boundaries.
+A human-readable companion report is written to `REVIEW.plan.review.txt`.
 
 Apply is a separate invocation:
 
@@ -45,7 +46,9 @@ the copy, and publishes without overwriting an existing destination.
 Keep the review manifest private to the local operation. Do not edit it. If
 anything changes, run Preview again and review the replacement manifest.
 The manifest is a comparison record, not a cryptographic signature or proof
-of who approved it; the GUI's explicit confirmation is still required.
+of who approved it; the GUI's explicit confirmation is still required. The GUI
+also binds the confirmation to the same bridge, provider, plan-file, and
+configuration paths used for the successful preview.
 
 ## VM safety boundary
 
