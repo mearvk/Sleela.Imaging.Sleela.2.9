@@ -8,7 +8,7 @@ implicitly.
 ## Contract
 
 - Adapter ABI: `SLI_HOST_ABI_VERSION 1`.
-- Provider ABI: `SLI_PROVIDER_ABI_VERSION 2`; all required exports are checked.
+- Provider ABI: `SLI_PROVIDER_ABI_VERSION 3`; all required exports are checked.
 - Provider path is explicit and must be trusted by the host.
 - The adapter owns the loaded library and provider instance until
   `sli_host_close`.
