@@ -70,10 +70,12 @@ The Java organizer scans only the immediate source directory in its visible entr
 | Planned media record | src/MediaRecord.sleela | SLeeLa |
 | Safety policy | src/ImagingSafetyPolicy.sleela | SLeeLa |
 | Native window and controls | src/ui/ImagingWindow.sleela | SLeeLa intent + SleelaUI renderer |
-| Filesystem operations | src/ImagingFileSystem.sleela contract | OS/VM provider; currently unbound |
+| Filesystem process bridge | src/ui/ImagingWindow.sleela `osRun` -> native/imaging_sleela_bridge.cpp | SLeeLa VM OS process service |
+| Native filesystem operations | native/imaging_host_adapter.cpp + native/imaging_provider.cpp | Explicit-path host adapter and provider C ABI |
+| In-process filesystem facade | src/ImagingFileSystem.sleela | Design contract; not wired as a VM-native binding |
 | Existing native organizer | native/imaging.cpp | Standalone C++ companion, not a VM binding |
 
-The UI uses the documented SLeeLa ui* built-ins and the SleelaUI C ABI. The filesystem contract remains explicitly unbound: no SLeeLa source method may pretend that it enumerated or changed the user's files.
+The UI uses the documented SLeeLa ui* built-ins and SleelaUI C ABI. For filesystem work, it invokes `sleela-imaging-bridge` through the SLeeLa VM's existing `osRun` built-in. The SLeeLa compiler lowers this call to `OP_OS_RUN`, and the VM core dispatches it through the OS process abstraction. The bridge then loads the native host adapter and provider in its own process. This is a VM-mediated process boundary, not an in-process VM opcode or native pointer binding. `ImagingFileSystem.sleela` remains an unused direct-binding facade; it must not claim capabilities it does not implement.
 
 ## 4. Data and transaction rules
 
@@ -95,7 +97,7 @@ The UI uses the documented SLeeLa ui* built-ins and the SleelaUI C ABI. The file
 
 The first native window provides source and destination inputs, recursion, dry-run, digest-verification, an explicit confirmation control, Preview, Apply, and Quit. The default is dry-run enabled. Apply remains disabled until the provider, canonical-root proof, preview, digest verification, and no-overwrite capability are all available.
 
-With the current repository state, Preview reports that the filesystem VM bridge is unbound. It does not scan. Apply is disabled and the session policy denies it. This is an intentional safe boundary, not a completed end-to-end organizer.
+The current UI performs a read-only Preview by invoking the process bridge and writes a reviewed manifest plus local report. Apply is enabled only after a fresh preview with Dry run off, SHA-256 on, unchanged configuration and executable paths, and explicit confirmation. The bridge recomputes the manifest and the provider revalidates content before publication. The direct `ImagingFileSystem.sleela` facade remains unbound, but it is not the active process-bridge path.
 
 ## 6. Release gates
 
@@ -104,10 +106,11 @@ With the current repository state, Preview reports that the filesystem VM bridge
 | SLeeLa source syntax | Compile all new .sleela files with the target 2.9 compiler | NOT RUN |
 | SleelaUI rendering | Run the window on Linux, Windows 10+, and macOS | NOT RUN |
 | Window close lifecycle | Verify window-manager close and explicit Quit behavior | NOT RUN |
-| Filesystem VM provider | Bound provider with canonicalization and disjoint-root tests | BLOCKED / unbound |
+| SLeeLa VM process bridge | `osRun` -> `OP_OS_RUN` -> OS process service; bridge invokes provider | IMPLEMENTED IN SOURCE; exact-commit build/test NOT RUN |
+| Provider C ABI | Canonical roots, source digest binding, verified copy, no-replace publication | IMPLEMENTED IN SOURCE; exact-commit tests NOT RUN |
 | Metadata support | Format-specific parser and malformed/real fixture suites | BLOCKED / not implemented |
 | Preview determinism | Same source/config snapshot yields same plan | NOT RUN |
-| Apply transaction | Injected failure, verification, collision, and recovery tests | NOT RUN |
+| Apply transaction | Injected failure, same-size/same-mtime content mutation, verification, collision, and recovery tests | REGRESSION TESTS ADDED; NOT RUN |
 | Native companion | Build and CTest for the exact reviewed commit | NOT RUN in this coding pass |
 | Cross-platform | Exact-commit results on all three OSes | NOT RUN |
 | Privacy/security review | Review report, redaction checks, no-egress tests | NOT RUN |
@@ -124,4 +127,4 @@ A documentation statement is not a passing test. A local prototype result is not
 - [ ] An explicit review of private-data egress and log redaction.
 - [ ] Exact-commit evidence for every claimed platform or compiler result.
 
-**Final decision:** retain the SLeeLa-native UI and policy/application layer; keep the native filesystem provider as a release blocker until it is genuinely bound and tested. Do not reintroduce the Java network, database, key, certificate, or source-deletion behavior into this application core.
+**Final decision:** retain the SLeeLa-native UI and its VM-mediated `osRun` process bridge; do not add a new VM opcode merely to load the provider in-process. Keep release status gated on exact-commit SLeeLa compilation, native build and tests, platform evidence, metadata-parser completion, and security review. Do not reintroduce the Java network, database, key, certificate, or source-deletion behavior into this application core.
