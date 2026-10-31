@@ -56,7 +56,7 @@ def main():
         assert plan.is_file(), "preview did not write the exact-plan manifest"
         report = pathlib.Path(str(plan) + ".review.txt")
         assert report.is_file(), "preview did not write the human-readable report"
-        assert "sample.jpg" in report.read_text(encoding="utf-8"), "report omits planned source"
+        assert "sample.jpg" in report.read_text(encoding="utf-8"), "report omits planned source"\n        assert "timestamp=filesystem-mtime" in report.read_text(encoding="utf-8")\n        assert "timezone=known" in report.read_text(encoding="utf-8")
 
         # Same-size content mutation with the original timestamp restored must invalidate review.
         reviewed_stat = original.stat()
