@@ -4,21 +4,32 @@ The Java application's useful workflow is retained: inspect a source folder, cla
 
 Java pennywise.Main becomes ImagingApplication; ImageMetadataReader becomes MediaDateResolver plus a metadata bridge; XMLHandler becomes ImagingConfig; extension checks become MediaClassifier; date formatting becomes MediaNaming.
 
-Date precedence: embedded capture timestamp, positive filesystem modification timestamp, then unknown (zero). No current timestamp is invented. The Java parser advertised JPEG/TIFF/HEIC/PNG but only dispatched JPEG and TIFF signatures; this port documents that boundary.
+Date precedence in the planned SLeeLa model: embedded capture timestamp, positive filesystem modification timestamp, then unknown (zero). No current timestamp is invented. The Java parser advertised JPEG/TIFF/HEIC/PNG but only dispatched JPEG and TIFF signatures; this port documents that boundary.
 
-Operation is two-phase: plan and report; after explicit confirmation, copy to a temporary destination, verify byte count and digest, then atomically publish. Keep source intact. Cleanup is separate future work.
+## Native build status
 
-ImagingFileSystem defines the OS/VM boundary. Bind directory enumeration, canonical paths, metadata reads, copy/verification, atomic publication, and report writing. Until bound, this is source-level code plus integration contract, not a tested binary.
+A first portable C++17 filesystem engine is now checked in under native/.
+It provides the runnable discovery, classification, mtime-based naming,
+dry-run, confirmed copy, byte-count/SHA-256 verification, no-overwrite publish,
+and CSV reporting path. Build and test instructions are in
+docs/NATIVE_BUILD.md.
+
+This is a native companion engine, not yet a registered SLeeLa VM filesystem
+module. src/ImagingFileSystem.sleela remains an unbound contract. The native
+engine currently uses filesystem modification time only; embedded EXIF and
+QuickTime capture-time parsing remain future work.
 
 ## Quality and traceability
 
-- `conversion/CONVERSION_MANIFEST.json` records source-to-destination mappings and conversion status.
-- `conversion/BEHAVIOR_MAPPING.md` distinguishes preserved behavior from unfinished work.
-- `conversion/DECISIONS.md` records safety and design decisions.
-- `conversion/KNOWN_DIFFERENCES.md` records known gaps.
-- `docs/TRANSACTION_MODEL.md` defines the non-destructive copy/verify/publish sequence.
-- `docs/FORMAT_SUPPORT.md` distinguishes extension recognition from tested metadata extraction.
-- `tests/` contains behavioral and integration case definitions.
-- `validation/` contains release gates, a checklist, and a cross-platform evidence matrix.
+- conversion/CONVERSION_MANIFEST.json records source-to-destination mappings and conversion status.
+- conversion/BEHAVIOR_MAPPING.md distinguishes preserved behavior from unfinished work.
+- conversion/DECISIONS.md records safety and design decisions.
+- conversion/KNOWN_DIFFERENCES.md records known gaps.
+- docs/TRANSACTION_MODEL.md defines the non-destructive copy/verify/publish sequence.
+- docs/FORMAT_SUPPORT.md distinguishes extension recognition from tested metadata extraction.
+- tests/ contains behavioral and integration case definitions plus the synthetic native integration test.
+- validation/ contains release gates, a checklist, and a cross-platform evidence matrix.
 
-These documents define requirements; they do not constitute passing tests. Compilation, runtime behavior, filesystem integration, and platform compatibility remain unverified until evidence is recorded for the exact release commit.
+These documents define requirements; they do not constitute passing tests. Keep
+SLeeLa source compilation, VM bridge binding, and Windows/macOS CI evidence as
+separate gates.
