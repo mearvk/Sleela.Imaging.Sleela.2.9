@@ -1,8 +1,13 @@
 # SLeeLa VM integration
 
-The imaging application uses the existing SLeeLa VM process built-ins
-(`osRun` / `osSpawn`). No VM opcode, runtime rebuild, or native pointer
-crossing is required.
+The SLeeLa desktop application runs under the SLeeLa runtime and invokes the
+native imaging bridge through the existing VM OS process built-in (`osRun`).
+The bridge then loads the imaging provider in its own process. This is a real
+VM-mediated process boundary, not an in-process VM opcode or native provider
+binding. No VM opcode or runtime rebuild is required, and no native pointer,
+library handle, or file descriptor crosses into SLeeLa values. The SLeeLa
+`ImagingFileSystem` facade documents a future capability surface; the active UI
+calls the process bridge directly.
 
 ## Build outputs
 
@@ -23,8 +28,8 @@ sleela-imaging-bridge --provider PROVIDER --source SOURCE --images IMAGES \
 ```
 
 The manifest records the six configured roots, scan options, summary counts,
-and every planned source/destination pair with byte count and modification
-timestamp. The provider-library path is also bound into the manifest. Path
+and every planned source/destination pair with byte count, modification
+timestamp, and preview-time SHA-256 digest. The provider-library path is also bound into the manifest. Path
 strings are hex-encoded so unusual characters cannot change record boundaries.
 A human-readable companion report is written to `REVIEW.plan.review.txt`.
 
@@ -39,12 +44,16 @@ sleela-imaging-bridge --provider PROVIDER --source SOURCE --images IMAGES \
 The bridge reopens the provider, recomputes the current preview, and compares
 the complete deterministic manifest byte-for-byte with the reviewed file.
 Any changed root, option, file, destination, collision state, size, timestamp,
-or summary denies apply. Only after an exact match does it apply that same
-in-process plan. The provider independently revalidates each source, hashes
-the copy, and publishes without overwriting an existing destination.
+source digest, or summary denies apply. Only after an exact match does it apply
+that same in-process plan. The provider re-hashes each source before copying
+and verifies the temporary copy against the reviewed digest before publishing
+without replacing an existing destination.
 
 Keep the review manifest private to the local operation. Do not edit it. If
-anything changes, run Preview again and review the replacement manifest.
+anything changes, choose a new unused plan path and run Preview again. Existing
+manifests and reports are never overwritten, even when their headers match the
+imaging format. Temporary artifacts are created exclusively and published
+without replacing an existing destination.
 The manifest is a comparison record, not a cryptographic signature or proof
 of who approved it; the GUI's explicit confirmation is still required. The GUI
 also binds the confirmation to the same bridge, provider, plan-file, and
