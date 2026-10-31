@@ -98,7 +98,7 @@ bool parse_date(std::string s,int64_t &ns,bool &zone_known) {
     if(exif) { if(s[10]!=' '||s[13]!=':'||s[16]!=':') return false; }
     else if((s[10]!='T'&&s[10]!=' ')||s[13]!=':'||s[16]!=':') return false;
     size_t p=19;int nanos=0;
-    if(p<s.size()&&s[p]=='.'){++p;int scale=100000000;size_t count=0;while(p<s.size()&&std::isdigit(static_cast<unsigned char>(s[p]))&&count<9){nanos+=(s[p++]-'0')*scale;scale/=10;++count;}while(p<s.size()&&std::isdigit(static_cast<unsigned char>(s[p])))++p;}
+    if(p<s.size()&&s[p]=='.'){++p;int scale=100000000;size_t count=0;while(p<s.size()&&std::isdigit(static_cast<unsigned char>(s[p]))&&count<9){nanos+=(s[p++]-'0')*scale;scale/=10;++count;}if(count==0)return false;while(p<s.size()&&std::isdigit(static_cast<unsigned char>(s[p])))++p;}
     bool has_zone=false;int zone=0;
     if(p<s.size()&&(s[p]=='Z'||s[p]=='z')){has_zone=true;++p;}
     else if(p<s.size()&&(s[p]=='+'||s[p]=='-')){const int sign=s[p++]=='+'?1:-1;int zh=0,zm=0;if(!digits(s,p,2,zh))return false;p+=2;if(p<s.size()&&s[p]==':')++p;if(!digits(s,p,2,zm))return false;p+=2;if(zh>23||zm>59)return false;zone=sign*(zh*60+zm);has_zone=true;}
@@ -107,7 +107,7 @@ bool parse_date(std::string s,int64_t &ns,bool &zone_known) {
     ns=make_ns(y,mo,d,h,mi,se,nanos,has_zone,zone,zone_known);
     return ns!=0;
 }
-std::string tiff_ascii(Reader &r,uint64_t base,uint64_t entry,bool le) {
+std::string tiff_ascii(Reader &r,uint64_t base,uint64_t end,uint64_t entry,bool le) {
     uint16_t type=0;uint32_t count=0;
     if(!r.u16(entry+2,le,type)||!r.u32(entry+4,le,count)||type!=2||count==0||count>128)return {};
     uint32_t offset=0;
@@ -130,7 +130,7 @@ bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
         uint16_t count=0;if(!r.u16(off,le,count)||count>1024||off+2+uint64_t(count)*12+4>end)return;
         for(uint16_t i=0;i<count;++i){const uint64_t e=off+2+uint64_t(i)*12;uint16_t tag=0;if(!r.u16(e,le,tag))continue;
             if(tag==0x8769&&!exif)r.u32(e+8,le,exif_ifd);
-            if(tag==0x0132&&!exif)datetime=tiff_ascii(r,tiff,e,le);
+            if(tag==0x0132&&!exif)datetime=tiff_ascii(r,tiff,end,e,le);
             if(tag==0x9003&&exif)original=tiff_ascii(r,tiff,e,le);
             if(tag==0x9004&&exif)digitized=tiff_ascii(r,tiff,e,le);
             if(tag==0x9011&&exif)offset_original=tiff_ascii(r,tiff,e,le);
@@ -154,7 +154,7 @@ bool jpeg_exif(Reader &r,CaptureTime &out) {
         if(marker[1]==0xd9||marker[1]==0xda)return false;
         if(marker[1]==0x01||(marker[1]>=0xd0&&marker[1]<=0xd7))continue;
         uint8_t lb[2];if(!r.read(p,lb,2))return false;const uint16_t len=uint16_t((lb[0]<<8)|lb[1]);if(len<2||p+len>r.size())return false;
-        if(marker[1]==0xe1&&len>=8){char sig[6];if(r.read(p+2,sig,6)&&std::string(sig,6)==std::string("Exif\0\0",6))return tiff_date(r,p+8,r.size(),out);}
+        if(marker[1]==0xe1&&len>=8){char sig[6];if(r.read(p+2,sig,6)&&std::string(sig,6)==std::string("Exif\0\0",6))return tiff_date(r,p+8,p+len,out);}
         p+=len;
     }
     return false;
