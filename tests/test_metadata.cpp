@@ -37,5 +37,6 @@ int main(){
  const auto mov_path=root/"capture.mov";write(mov_path,moov);auto quicktime=sleela_media::read_capture_time(mov_path.string());
  assert(quicktime.found);assert(quicktime.source=="quicktime-day");assert(quicktime.timezone_known);assert(quicktime.unix_time_ns==1654589350000000000LL);
  const auto bad_path=root/"broken.jpg";write(bad_path,std::vector<uint8_t>{0xff,0xd8,0xff,0xe1,0,4});auto bad=sleela_media::read_capture_time(bad_path.string());assert(!bad.found);
- fs::remove_all(root);std::cout<<"media metadata fixtures passed\\n";
+ fs::remove_all(root);std::cout<<"media metadata fixtures passed
+";
 }
