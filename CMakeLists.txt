@@ -25,6 +25,20 @@ if(MSVC)
 else()
   target_compile_options(sleela_imaging_host PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
+
+# SLeeLa's existing osRun/osSpawn VM built-ins can invoke this process adapter;
+# the VM itself does not need a new opcode or a rebuilt runtime.
+add_executable(sleela-imaging-bridge native/imaging_sleela_bridge.cpp)
+target_include_directories(sleela-imaging-bridge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/native)
+target_link_libraries(sleela-imaging-bridge PRIVATE sleela_imaging_host)
+target_compile_features(sleela-imaging-bridge PRIVATE cxx_std_17)
+set_target_properties(sleela-imaging-bridge PROPERTIES CXX_EXTENSIONS OFF)
+if(MSVC)
+  target_compile_options(sleela-imaging-bridge PRIVATE /W4 /WX /permissive-)
+else()
+  target_compile_options(sleela-imaging-bridge PRIVATE -Wall -Wextra -Wpedantic -Werror)
+endif()
+
 target_include_directories(sleela_imaging_provider PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/native)
 target_compile_features(sleela_imaging_provider PRIVATE cxx_std_17)
 target_compile_definitions(sleela_imaging_provider PRIVATE SLI_PROVIDER_BUILD)
