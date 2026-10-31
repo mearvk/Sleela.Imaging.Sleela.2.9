@@ -184,12 +184,13 @@ int main(int argc, char **argv) {
     }
 
     if (!apply) {
-        if (!write_manifest(plan_file, current_manifest) ||\n            !write_review_text(plan_file, result, items, required)) {
+        if (!write_manifest(plan_file, current_manifest) ||
+            !write_review_text(plan_file, result, items, required)) {
             std::fprintf(stderr, "ERROR: could not write review manifest: %s\n", plan_file.c_str());
             sli_host_close(host);
             return 6;
         }
-        std::printf("REVIEW MANIFEST: %s\nPREVIEW ONLY: no files were changed.\n", plan_file.c_str());
+        std::printf("REVIEW MANIFEST: %s\nREVIEW REPORT: %s.review.txt\nPREVIEW ONLY: no files were changed.\n", plan_file.c_str(), plan_file.c_str());
         sli_host_close(host);
         return 0;
     }
