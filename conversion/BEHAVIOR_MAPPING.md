@@ -4,12 +4,12 @@ This document separates behavior preserved from implementation details intention
 
 | Original responsibility | SLeeLa destination | Conversion status | Evidence still required |
 |---|---|---|---|
-| Application entry/orchestration | src/ImagingApplication.sleela and src/ImagingSession.sleela | Adapted | Full scan, preview, apply integration |
+| Application entry/orchestration | src/ImagingApplication.sleela and src/ImagingSession.sleela | Adapted | Native C ABI host binding and UI callback integration |
 | Image/video extension checks | src/MediaClassifier.sleela | Ported | Full extension matrix |
 | Capture date resolution | src/MediaDateResolver.sleela | Adapted | Bounded metadata adapter tests |
 | Filename construction | src/MediaNaming.sleela | Adapted | Locale, timezone, collision tests |
 | Configuration model | src/ImagingConfig.sleela | Adapted | Secure parser, validation, migration |
-| Filesystem enumeration and copying | src/ImagingFileSystem.sleela | Deferred | Native VM provider on all target OSes |
+| Filesystem enumeration and copying | src/ImagingFileSystem.sleela | Deferred | Native C ABI provider exists; SLeeLa VM host adapter and UI callback binding remain deferred |
 | Safe operation policy | src/ImagingSafetyPolicy.sleela | Adapted | Canonical path and transaction tests |
 | Native desktop interface | src/ui/ImagingWindow.sleela | Added in SLeeLa | SLeeLa compile and three-platform render tests |
 | Network key/certificate/database/entertainment behavior | Excluded from organizer core | Rejected | Separate opt-in design and security review if ever proposed |
