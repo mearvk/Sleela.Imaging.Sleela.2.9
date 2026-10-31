@@ -59,3 +59,15 @@ does not add a native dependency to the VM.
 
 The GUI must keep Apply disabled until a successful preview, an unchanged
 configuration, SHA-256 verification, and the user's explicit confirmation.
+
+## Integration test
+
+After configuring and building, run the focused test with:
+
+```sh
+ctest --test-dir build -R imaging-bridge-reviewed-plan --output-on-failure
+```
+
+The test verifies that an unrelated existing plan file is not overwritten,
+that a changed source invalidates a reviewed plan without publishing anything,
+and that a fresh exact plan applies while preserving the original source.
