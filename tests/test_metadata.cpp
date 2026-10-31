@@ -1,4 +1,5 @@
 #include "media_metadata.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <filesystem>
