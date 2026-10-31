@@ -2,6 +2,10 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <filesystem>
+#include <system_error>
+#include <atomic>
+#include <chrono>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -42,31 +46,40 @@ std::string manifest(const sli_config &config, const sli_result &result,
     for (uint64_t i = 0; i < count; ++i) {
         const auto &item = items[static_cast<size_t>(i)];
         out << "item=" << hex(item.source) << "|" << hex(item.destination) << "|"
-            << hex(item.state) << "|" << item.bytes << "|" << item.modified_time_ns << "\n";
+            << hex(item.state) << "|" << item.bytes << "|" << item.modified_time_ns
+            << "|" << hex(item.sha256) << "\n";
     }
     return out.str();
 }
-bool existing_file_has_header(const std::string &path, const std::string &header) {
-    std::ifstream existing(path, std::ios::binary);
-    if (!existing) return true;
-    std::string first_line;
-    return std::getline(existing, first_line) && first_line == header;
+bool path_is_unoccupied(const std::string &path) {
+    std::error_code ec;
+    const auto status = std::filesystem::symlink_status(path, ec);
+    return ec == std::errc::no_such_file_or_directory ||
+           (!ec && status.type() == std::filesystem::file_type::not_found);
+}
+bool write_no_replace(const std::string &path, const std::string &data) {
+    if (path.empty()) return false;
+    static std::atomic<uint64_t> sequence{1};
+    for (unsigned attempt = 0; attempt < 32; ++attempt) {
+        const auto tick = std::chrono::steady_clock::now().time_since_epoch().count();
+        const std::string temporary = path + ".sleela-tmp-" + std::to_string(tick) + "-" +
+                                      std::to_string(sequence.fetch_add(1));
+        std::FILE *file = std::fopen(temporary.c_str(), "wbx");
+        if (!file) continue;
+        bool ok = data.empty() || std::fwrite(data.data(), 1, data.size(), file) == data.size();
+        if (ok) ok = std::fflush(file) == 0;
+        if (std::fclose(file) != 0) ok = false;
+        if (!ok) { std::remove(temporary.c_str()); return false; }
+        std::error_code ec;
+        std::filesystem::create_hard_link(temporary, path, ec);
+        std::remove(temporary.c_str());
+        if (!ec) return true;
+        if (!path_is_unoccupied(path)) return false;
+    }
+    return false;
 }
 bool write_manifest(const std::string &path, const std::string &data) {
-    if (path.empty() || !existing_file_has_header(path, "SLEELA-IMAGING-PLAN-1")) return false;
-    const std::string temporary = path + ".sleela-tmp";
-    std::ifstream stale_temporary(temporary, std::ios::binary);
-    if (stale_temporary) return false;
-    {
-        std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-        if (!file || !file.write(data.data(), static_cast<std::streamsize>(data.size()))) return false;
-    }
-    std::remove(path.c_str());
-    if (std::rename(temporary.c_str(), path.c_str()) != 0) {
-        std::remove(temporary.c_str());
-        return false;
-    }
-    return true;
+    return write_no_replace(path, data);
 }
 std::string display_path(const char *value) {
     std::string out;
@@ -82,20 +95,18 @@ std::string display_path(const char *value) {
 bool write_review_text(const std::string &path, const sli_result &result,
                        const std::vector<sli_item> &items, uint64_t count, const std::string &provider_path) {
     const std::string report_path = path + ".review.txt";
-    if (!existing_file_has_header(report_path, "SLeeLa Imaging review report")) return false;
-    std::ofstream file(report_path, std::ios::binary | std::ios::trunc);
-    if (!file) return false;
-    file << "SLeeLa Imaging review report\nProvider: " << display_path(provider_path.c_str()) << "\n"
-         << "Files seen: " << result.files_seen << "\nEligible: " << result.eligible
-         << "\nUnknown timestamp: " << result.unknown_timestamp
-         << "\nDestination collisions: " << result.collisions
-         << "\nPreview failures: " << result.failed << "\n\n";
+    std::ostringstream report;
+    report << "SLeeLa Imaging review report\nProvider: " << display_path(provider_path.c_str()) << "\n"
+           << "Files seen: " << result.files_seen << "\nEligible: " << result.eligible
+           << "\nUnknown timestamp: " << result.unknown_timestamp
+           << "\nDestination collisions: " << result.collisions
+           << "\nPreview failures: " << result.failed << "\n\n";
     for (uint64_t i = 0; i < count; ++i) {
         const auto &item = items[static_cast<size_t>(i)];
-        file << display_path(item.source) << " -> " << display_path(item.destination)
-             << " [" << item.state << ", " << item.bytes << " bytes]\n";
+        report << display_path(item.source) << " -> " << display_path(item.destination)
+               << " [" << item.state << ", " << item.bytes << " bytes]\n";
     }
-    return static_cast<bool>(file);
+    return write_no_replace(report_path, report.str());
 }
 bool read_manifest(const std::string &path, std::string &data) {
     std::ifstream file(path, std::ios::binary);
@@ -195,7 +206,7 @@ int main(int argc, char **argv) {
     }
 
     if (!apply) {
-        if (!existing_file_has_header(plan_file + ".review.txt", "SLeeLa Imaging review report") ||
+        if (!path_is_unoccupied(plan_file) || !path_is_unoccupied(plan_file + ".review.txt") ||
             !write_manifest(plan_file, current_manifest) ||
             !write_review_text(plan_file, result, items, required, provider)) {
             std::fprintf(stderr, "ERROR: could not write review manifest: %s\n", plan_file.c_str());
