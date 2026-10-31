@@ -50,8 +50,8 @@ public:
     }
     std::string text(uint64_t p, size_t n) {
         if (!n || n>256) return {};
-        std::string s(n,'\\0'); if (!read(p,&s[0],n)) return {};
-        while (!s.empty() && (s.back()=='\\0' || s.back()==' ')) s.pop_back();
+        std::string s(n,'\0'); if (!read(p,&s[0],n)) return {};
+        while (!s.empty() && (s.back()=='\0' || s.back()==' ')) s.pop_back();
         return s;
     }
 };
@@ -102,7 +102,7 @@ bool parse_date(std::string s,int64_t &ns,bool &zone_known) {
     bool has_zone=false;int zone=0;
     if(p<s.size()&&(s[p]=='Z'||s[p]=='z')){has_zone=true;++p;}
     else if(p<s.size()&&(s[p]=='+'||s[p]=='-')){const int sign=s[p++]=='+'?1:-1;int zh=0,zm=0;if(!digits(s,p,2,zh))return false;p+=2;if(p<s.size()&&s[p]==':')++p;if(!digits(s,p,2,zm))return false;p+=2;if(zh>23||zm>59)return false;zone=sign*(zh*60+zm);has_zone=true;}
-    while(p<s.size()&&(s[p]==' '||s[p]=='\\0'))++p;
+    while(p<s.size()&&(s[p]==' '||s[p]=='\0'))++p;
     if(p!=s.size()) return false;
     ns=make_ns(y,mo,d,h,mi,se,nanos,has_zone,zone,zone_known);
     return ns!=0;
@@ -154,7 +154,7 @@ bool jpeg_exif(Reader &r,CaptureTime &out) {
         if(marker[1]==0xd9||marker[1]==0xda)return false;
         if(marker[1]==0x01||(marker[1]>=0xd0&&marker[1]<=0xd7))continue;
         uint8_t lb[2];if(!r.read(p,lb,2))return false;const uint16_t len=uint16_t((lb[0]<<8)|lb[1]);if(len<2||p+len>r.size())return false;
-        if(marker[1]==0xe1&&len>=8){char sig[6];if(r.read(p+2,sig,6)&&std::string(sig,6)==std::string("Exif\\0\\0",6))return tiff_date(r,p+8,r.size(),out);}
+        if(marker[1]==0xe1&&len>=8){char sig[6];if(r.read(p+2,sig,6)&&std::string(sig,6)==std::string("Exif\0\0",6))return tiff_date(r,p+8,r.size(),out);}
         p+=len;
     }
     return false;
