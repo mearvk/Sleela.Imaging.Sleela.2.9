@@ -19,7 +19,7 @@
 #include <vector>
 namespace fs = std::filesystem;
 namespace {
-struct Plan { fs::path src, dst; uint64_t bytes=0; int64_t modified=0; int64_t organize_time=0; std::string timestamp_source="filesystem-mtime"; std::string digest; std::string state="planned"; };
+struct Plan { fs::path src, dst; uint64_t bytes=0; int64_t modified=0; int64_t organize_time=0; std::string timestamp_source="filesystem-mtime"; bool timezone_known=true; std::string digest; std::string state="planned"; };
 std::atomic<uint64_t> temp_sequence{1};
 bool put(char *dst,size_t cap,const std::string &s){if(s.size()>=cap)return false;std::memcpy(dst,s.c_str(),s.size()+1);return true;}
 std::string lower(std::string s){for(char &c:s)c=char(std::tolower(static_cast<unsigned char>(c)));return s;}
@@ -64,7 +64,7 @@ int32_t sli_provider_preview(sli_provider *p,const sli_config *c,sli_result *r,s
    std::error_code ec;if(entry.is_symlink(ec)||ec)return;if(!entry.is_regular_file(ec)||ec||category(entry.path()).empty())return;
    auto source=fs::canonical(entry.path(),ec);if(ec||!inside(source,p->roots[0]))return;
    Plan item;item.src=source;item.bytes=fs::file_size(source,ec);if(ec)return;
-   try{item.modified=modified_ns(source);item.organize_time=system_ns_from_file_ns(item.modified);const auto metadata=sleela_media::read_capture_time(source.u8string());if(metadata.found){item.organize_time=metadata.unix_time_ns;item.timestamp_source=metadata.source;}if(c->verify_sha256)item.digest=sha256(source);}catch(...){++r->unknown_timestamp;return;}
+   try{item.modified=modified_ns(source);item.organize_time=system_ns_from_file_ns(item.modified);const auto metadata=sleela_media::read_capture_time(source.u8string());if(metadata.found){item.organize_time=metadata.unix_time_ns;item.timestamp_source=metadata.source;item.timezone_known=metadata.timezone_known;}if(c->verify_sha256)item.digest=sha256(source);}catch(...){++r->unknown_timestamp;return;}
    p->plan.push_back(std::move(item));
   };
   if(c->recursive){fs::recursive_directory_iterator it(p->roots[0],fs::directory_options::skip_permission_denied),end;for(;it!=end;){std::error_code ec;if(it->is_symlink(ec))it.disable_recursion_pending();else if(!ec)add(*it);it.increment(ec);}}
@@ -79,7 +79,7 @@ int32_t sli_provider_preview(sli_provider *p,const sli_config *c,sli_result *r,s
    if(fs::exists(item.dst)){item.state="collision-skipped";++r->collisions;}
   }
   *required=p->plan.size();if(out&&capacity<*required){put(r->status,sizeof(r->status),"BUFFER_TOO_SMALL");return -2;}
-  if(out)for(size_t i=0;i<p->plan.size();++i){const auto &item=p->plan[i];if(!put(out[i].source,sizeof(out[i].source),item.src.u8string())||!put(out[i].destination,sizeof(out[i].destination),item.dst.u8string())||!put(out[i].state,sizeof(out[i].state),item.state)||!put(out[i].sha256,sizeof(out[i].sha256),item.digest)||!put(out[i].timestamp_source,sizeof(out[i].timestamp_source),item.timestamp_source))throw std::runtime_error("UTF-8 path or digest exceeds ABI buffer");out[i].bytes=item.bytes;out[i].modified_time_ns=item.modified;out[i].organize_time_ns=item.organize_time;}
+  if(out)for(size_t i=0;i<p->plan.size();++i){const auto &item=p->plan[i];if(!put(out[i].source,sizeof(out[i].source),item.src.u8string())||!put(out[i].destination,sizeof(out[i].destination),item.dst.u8string())||!put(out[i].state,sizeof(out[i].state),item.state)||!put(out[i].sha256,sizeof(out[i].sha256),item.digest)||!put(out[i].timestamp_source,sizeof(out[i].timestamp_source),item.timestamp_source))throw std::runtime_error("UTF-8 path or digest exceeds ABI buffer");out[i].bytes=item.bytes;out[i].modified_time_ns=item.modified;out[i].organize_time_ns=item.organize_time;out[i].timestamp_timezone_known=item.timezone_known?1u:0u;}
   p->digest=c->verify_sha256!=0;p->dry_run=c->dry_run!=0;p->ready=(out!=nullptr);put(r->status,sizeof(r->status),c->dry_run?"Preview complete; no files changed.":"Preview complete; apply requires explicit confirmation.");return 0;
  }catch(const std::exception &e){put(r->status,sizeof(r->status),e.what());return -3;}
 }
