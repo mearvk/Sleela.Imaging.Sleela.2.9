@@ -5,11 +5,11 @@
 1. **Discover:** enumerate regular files under the canonical source root. Do not follow symbolic links by default.
 2. **Classify:** accept only explicitly supported categories; preserve unknown files untouched.
 3. **Resolve metadata:** record value, source, and confidence/provenance. Unknown remains unknown.
-4. **Plan:** compute final paths and detect collisions before any write.
+4. **Plan:** compute final paths, detect collisions, and capture a SHA-256 digest for every eligible source before any write. The reviewed manifest binds paths, options, sizes, timestamps, and those digests.
 5. **Confirm:** require an explicit user confirmation for the exact plan. Dry-run remains the default.
 6. **Stage:** copy to a unique temporary file in the destination filesystem.
-7. **Verify:** compare byte count and a cryptographic digest of source and staged copy.
-8. **Publish:** atomically rename/publish without replacing an existing destination. If unsupported, fail closed.
+7. **Verify:** re-hash the source against its preview-time digest, then compare staged byte count and SHA-256 against that same reviewed digest.
+8. **Publish:** atomically create a no-replace hard link from the verified staged file. If unsupported, fail closed. Review manifests and reports also use exclusive temporary creation and no-replace publication.
 9. **Report:** record each state and failure; retain source media.
 
 ## Recovery rules
