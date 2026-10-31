@@ -71,8 +71,8 @@ int main(int argc, char **argv) {
         sli_host_close(host);
         return 4;
     }
-    std::vector<sli_item> items((size_t)required);
-    rc = sli_host_preview(host, &config, &result, items.empty() ? nullptr : items.data(),
+    // Keep a non-null output buffer even for an empty plan: the provider marks\n    // the preview ready only when the caller supplies an output buffer.\n    std::vector<sli_item> items((size_t)(required ? required : 1u));
+    rc = sli_host_preview(host, &config, &result, items.data(),
                           (uint64_t)items.size(), &required);
     if (rc < 0) {
         std::fprintf(stderr, "ERROR: preview failed (status=%d): %s\n", (int)rc, result.status);
