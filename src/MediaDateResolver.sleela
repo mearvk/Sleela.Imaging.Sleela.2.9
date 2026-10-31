@@ -1,0 +1,15 @@
+<< Embedded capture date takes precedence over filesystem mtime. >>
+#sleela 2.9
+material;
+class MediaDateResolver {
+  long resolve(long embeddedTime, long modifiedTime) {
+    if (embeddedTime > 0) return embeddedTime;
+    if (modifiedTime > 0) return modifiedTime;
+    return 0;
+  }
+  String source(long embeddedTime, long modifiedTime) {
+    if (embeddedTime > 0) return "embedded-metadata";
+    if (modifiedTime > 0) return "filesystem-modified-time";
+    return "unknown";
+  }
+}

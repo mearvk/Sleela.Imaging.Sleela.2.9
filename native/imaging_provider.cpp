@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -70,7 +71,8 @@ int32_t sli_provider_preview(sli_provider *p,const sli_config *c,sli_result *r,s
  }catch(const std::exception &e){put(r->status,sizeof(r->status),e.what());return -3;}
 }
 int32_t sli_provider_apply(sli_provider *p,uint32_t confirmed,sli_result *r){
- if(!p||!r)return -1;std::memset(r,0,sizeof(*r));
+ if(!p||!r) return -1;
+ std::memset(r,0,sizeof(*r));
  if(!p->ready||!confirmed||!p->digest){put(r->status,sizeof(r->status),"DENIED: fresh preview, confirmation, and SHA-256 are required.");return -2;}
  for(auto &item:p->plan){
   if(item.state=="collision-skipped")continue;
@@ -82,9 +84,10 @@ int32_t sli_provider_apply(sli_provider *p,uint32_t confirmed,sli_result *r){
    temporary=item.dst.parent_path()/(item.dst.filename().string()+".sleela-tmp-"+std::to_string(temp_sequence.fetch_add(1)));
    fs::copy_file(item.src,temporary,fs::copy_options::none);
    if(fs::file_size(temporary)!=item.bytes||sha256(item.src)!=sha256(temporary))throw std::runtime_error("copy byte-count or SHA-256 verification failed");
-   fs::create_hard_link(temporary,item.dst,ec);if(ec)throw std::runtime_error("atomic no-overwrite publication failed: "+ec.message());
+   fs::create_hard_link(temporary,item.dst,ec);
+   if(ec) throw std::runtime_error("atomic no-overwrite publication failed: "+ec.message());
    fs::remove(temporary,ec);item.state="published-verified";++r->published;
-  }catch(const std::exception &e){if(!temporary.empty()){std::error_code ignored;fs::remove(temporary,ignored);}item.state="failed";++r->failed;}
+  }catch(const std::exception &){if(!temporary.empty()){std::error_code ignored;fs::remove(temporary,ignored);}item.state="failed";++r->failed;}
  }
  p->ready=false;put(r->status,sizeof(r->status),"Apply finished. Originals were not deleted or modified.");return r->failed?1:0;
 }

@@ -25,8 +25,7 @@ endif()
 
 enable_testing()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-add_test(NAME imaging-integration
-  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_imaging.py $<TARGET_FILE:sleela-imaging>)
+add_test(NAME imaging-integration COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_imaging.py $<TARGET_FILE:sleela-imaging>)
 add_executable(imaging-provider-tests tests/test_provider.cpp)
 target_link_libraries(imaging-provider-tests PRIVATE sleela_imaging_provider)
 target_compile_features(imaging-provider-tests PRIVATE cxx_std_17)

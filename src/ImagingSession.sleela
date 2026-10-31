@@ -1,0 +1,67 @@
+#sleela 2.9
+material;
+class ImagingSession {
+ ImagingConfig config;
+ ImagingSafetyPolicy safety;
+ ImagingFileSystem filesystem;
+ boolean configured=false;
+ boolean previewReady=false;
+ String state="idle";
+ String lastStatus="No session configured.";
+ void configure(ImagingConfig value) {
+  config=value; safety=new ImagingSafetyPolicy(); filesystem=new ImagingFileSystem();
+  configured=(config!=null); previewReady=false;
+  state=configured ? "configured" : "idle";
+  lastStatus=configured ? "Configuration received." : "Configuration missing.";
+ }
+ boolean sameConfiguration(ImagingConfig value) {
+  if (config==null || value==null) return false;
+  return config.sourceDirectory==value.sourceDirectory &&
+   config.imageDestination==value.imageDestination &&
+   config.movDestination==value.movDestination &&
+   config.mp4Destination==value.mp4Destination &&
+   config.mpegDestination==value.mpegDestination &&
+   config.aviDestination==value.aviDestination &&
+   config.recursive==value.recursive && config.dryRun==value.dryRun &&
+   config.verifyDigest==value.verifyDigest && config.preserveSource==value.preserveSource;
+ }
+ String preview() {
+  previewReady=false;
+  if (!configured || config==null) { state="blocked"; lastStatus="BLOCKED: configuration is missing."; return lastStatus; }
+  if (!config.isConfigured()) { state="blocked"; lastStatus="BLOCKED: complete all source and destination paths."; return lastStatus; }
+  if (!config.isSafeDefault() && (config.allowNetwork || config.deleteSource || config.followSymbolicLinks || !config.preserveSource)) {
+   state="blocked"; lastStatus="BLOCKED: unsafe configuration option."; return lastStatus;
+  }
+  if (!safety.validRoots(config.sourceDirectory,config.imageDestination,config.movDestination,config.mp4Destination,config.mpegDestination,config.aviDestination)) {
+   state="blocked"; lastStatus="BLOCKED: roots must be present and distinct."; return lastStatus;
+  }
+  if (!filesystem.isBound()) { state="blocked"; lastStatus="BLOCKED: filesystem VM bridge is unbound; no files were scanned."; return lastStatus; }
+  if (!filesystem.rootsDisjoint(config.sourceDirectory,config.imageDestination,config.movDestination,config.mp4Destination,config.mpegDestination,config.aviDestination)) {
+   state="blocked"; lastStatus="BLOCKED: canonical root separation is not proven."; return lastStatus;
+  }
+  if (!filesystem.createPreviewSnapshot(config.sourceDirectory,config.recursive)) {
+   state="blocked"; lastStatus="BLOCKED: provider did not produce a complete stable preview."; return lastStatus;
+  }
+  previewReady=true; state="preview-ready"; lastStatus="Preview ready. No files have been changed."; return lastStatus;
+ }
+ boolean canApply(boolean userConfirmed) {
+  if (!configured || !previewReady || config==null) return false;
+  return safety.mayApply(userConfirmed,config.dryRun,previewReady,config.preserveSource,
+   filesystem.isBound(),filesystem.supportsAtomicNoReplace(),
+   config.verifyDigest && filesystem.supportsSha256(),filesystem.supportsStableSnapshot());
+ }
+ String requestApply(boolean userConfirmed) {
+  if (!canApply(userConfirmed)) {
+   state="blocked";
+   lastStatus="DENIED: preview, explicit confirmation, source preservation, and a bound verified atomic provider are required.";
+   return lastStatus;
+  }
+  if (!filesystem.executeVerifiedPlan()) {
+   state="blocked"; lastStatus="DENIED: no apply-capable filesystem provider is registered."; return lastStatus;
+  }
+  state="complete"; lastStatus="Operation completed. Source files were preserved."; return lastStatus;
+ }
+ String status() { return lastStatus; }
+ String stateName() { return state; }
+ boolean isPreviewReady() { return previewReady; }
+}
