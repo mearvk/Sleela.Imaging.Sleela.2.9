@@ -63,7 +63,10 @@ bool digits(const std::string &s,size_t p,size_t n,int &v) {
 }
 int64_t make_ns(int year,int month,int day,int hour,int minute,int second,int nanos,
                 bool has_zone,int zone_minutes,bool &zone_known) {
-    if(year<1900||year>2200||month<1||month>12||day<1||day>31||hour>23||minute>59||second>60) return 0;
+    if(year<1900||year>2200||month<1||month>12||day<1||hour>23||minute>59||second>60) return 0;
+    const bool leap=(year%4==0&&(year%100!=0||year%400==0));
+    const int month_days[]={31,leap?29:28,31,30,31,30,31,31,30,31,30,31};
+    if(day>month_days[month-1])return 0;
     std::tm tm{};tm.tm_year=year-1900;tm.tm_mon=month-1;tm.tm_mday=day;tm.tm_hour=hour;tm.tm_min=minute;tm.tm_sec=std::min(second,59);
     std::time_t value;
     if(has_zone) {
@@ -94,7 +97,7 @@ bool parse_date(std::string s,int64_t &ns,bool &zone_known) {
     size_t p=19;int nanos=0;
     if(p<s.size()&&s[p]=='.'){++p;int scale=100000000;size_t count=0;while(p<s.size()&&std::isdigit(static_cast<unsigned char>(s[p]))&&count<9){nanos+=(s[p++]-'0')*scale;scale/=10;++count;}while(p<s.size()&&std::isdigit(static_cast<unsigned char>(s[p])))++p;}
     bool has_zone=false;int zone=0;
-    if(p<s.size()&&s[p]=='Z'){has_zone=true;++p;}
+    if(p<s.size()&&(s[p]=='Z'||s[p]=='z')){has_zone=true;++p;}
     else if(p<s.size()&&(s[p]=='+'||s[p]=='-')){const int sign=s[p++]=='+'?1:-1;int zh=0,zm=0;if(!digits(s,p,2,zh))return false;p+=2;if(p<s.size()&&s[p]==':')++p;if(!digits(s,p,2,zm))return false;p+=2;if(zh>23||zm>59)return false;zone=sign*(zh*60+zm);has_zone=true;}
     while(p<s.size()&&(s[p]==' '||s[p]=='\\0'))++p;
     if(p!=s.size()) return false;
@@ -160,15 +163,15 @@ void qt_scan(Reader &r,uint64_t start,uint64_t end,unsigned depth,CaptureTime &b
     while(p+8<=end&&boxes++<100000){
         bool ok=false;uint32_t size32=be32(r,p,ok);char typebuf[4];if(!ok||!r.read(p+4,typebuf,4))return;
         const std::string type(typebuf,4);uint64_t size=size32,header=8;
-        if(size32==1){if(!r.u64be(p+8,size)||size<16)return;header=16;}
+        if(size32==1){if(p+16>end||!r.u64be(p+8,size)||size<16)return;header=16;}
         else if(size32==0)size=end-p;
         if(size<header||size>end-p)return;
         const uint64_t payload=p+header,box_end=p+size;
-        if(type=="mvhd"&&rank<50&&payload+4<=box_end){
+        if(type=="mvhd"&&rank<50&&payload+8<=box_end){
             uint8_t version=0;if(!r.read(payload,&version,1))return;uint64_t creation=0;
             if(version==0){uint32_t v=0;if(r.u32(payload+4,false,v))creation=v;}
-            else if(version==1)r.u64be(payload+4,creation);
-            if(creation>2082844800ULL&&creation<6000000000ULL){best.found=true;best.unix_time_ns=static_cast<int64_t>(creation-2082844800ULL)*1000000000LL;best.source="quicktime-mvhd";best.timezone_known=true;rank=50;}
+            else if(version==1){if(payload+12>box_end)return;r.u64be(payload+4,creation);}
+            if(creation>0&&creation<6000000000ULL){best.found=true;best.unix_time_ns=static_cast<int64_t>(creation-2082844800ULL)*1000000000LL;best.source="quicktime-mvhd";best.timezone_known=true;rank=50;}
         }
         if(type==std::string(1,static_cast<char>(0xa9))+std::string("day")){
             uint64_t q=payload;
