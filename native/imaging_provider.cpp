@@ -1,4 +1,5 @@
 #include "imaging_provider.h"
+#include "media_metadata.h"
 #include <array>
 #include <cstdint>
 #include <algorithm>
@@ -18,7 +19,7 @@
 #include <vector>
 namespace fs = std::filesystem;
 namespace {
-struct Plan { fs::path src, dst; uint64_t bytes=0; int64_t modified=0; std::string digest; std::string state="planned"; };
+struct Plan { fs::path src, dst; uint64_t bytes=0; int64_t modified=0; int64_t organize_time=0; std::string timestamp_source="filesystem-mtime"; std::string digest; std::string state="planned"; };
 std::atomic<uint64_t> temp_sequence{1};
 bool put(char *dst,size_t cap,const std::string &s){if(s.size()>=cap)return false;std::memcpy(dst,s.c_str(),s.size()+1);return true;}
 std::string lower(std::string s){for(char &c:s)c=char(std::tolower(static_cast<unsigned char>(c)));return s;}
@@ -27,7 +28,8 @@ bool inside(const fs::path &p,const fs::path &root){auto rel=p.lexically_relativ
 bool overlaps(const fs::path &a,const fs::path &b){return a==b||inside(a,b)||inside(b,a);}
 fs::path canonical_root(const char *s){if(!s||!std::memchr(s,0,SLI_PATH_CAPACITY)||!*s)throw std::runtime_error("empty directory root");std::error_code ec;auto p=fs::canonical(fs::u8path(s),ec);if(ec||!fs::is_directory(p))throw std::runtime_error("all six roots must be existing directories");return p;}
 int64_t modified_ns(const fs::path &p){std::error_code ec;auto t=fs::last_write_time(p,ec);if(ec)throw std::runtime_error("cannot read modification time");return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();}
-std::string timestamp(int64_t ns){auto ft=fs::file_time_type(std::chrono::nanoseconds(ns));auto st=std::chrono::time_point_cast<std::chrono::system_clock::duration>(ft-fs::file_time_type::clock::now()+std::chrono::system_clock::now());auto raw=std::chrono::system_clock::to_time_t(st);std::tm tm{};
+int64_t system_ns_from_file_ns(int64_t ns){auto ft=fs::file_time_type(std::chrono::nanoseconds(ns));auto st=std::chrono::time_point_cast<std::chrono::nanoseconds>(ft-fs::file_time_type::clock::now()+std::chrono::system_clock::now());return st.time_since_epoch().count();}
+std::string timestamp(int64_t ns){auto st=std::chrono::system_clock::time_point(std::chrono::nanoseconds(ns));auto raw=std::chrono::system_clock::to_time_t(st);std::tm tm{};
 #ifdef _WIN32
  localtime_s(&tm,&raw);
 #else
@@ -49,7 +51,7 @@ std::string sha256(const fs::path&p){std::ifstream f(p,std::ios::binary);if(!f)t
 struct sli_provider { std::vector<fs::path> roots; std::vector<Plan> plan; bool ready=false; bool digest=false; bool dry_run=true; };
 extern "C" {
 uint32_t sli_provider_abi_version(void){return SLI_PROVIDER_ABI_VERSION;}
-const char *sli_provider_version(void){return "2.0.0";}
+const char *sli_provider_version(void){return "3.0.0";}
 sli_provider *sli_provider_create(void){try{return new sli_provider();}catch(...){return nullptr;}}
 void sli_provider_destroy(sli_provider *p){delete p;}
 int32_t sli_provider_preview(sli_provider *p,const sli_config *c,sli_result *r,sli_item *out,uint64_t capacity,uint64_t *required){
@@ -62,22 +64,22 @@ int32_t sli_provider_preview(sli_provider *p,const sli_config *c,sli_result *r,s
    std::error_code ec;if(entry.is_symlink(ec)||ec)return;if(!entry.is_regular_file(ec)||ec||category(entry.path()).empty())return;
    auto source=fs::canonical(entry.path(),ec);if(ec||!inside(source,p->roots[0]))return;
    Plan item;item.src=source;item.bytes=fs::file_size(source,ec);if(ec)return;
-   try{item.modified=modified_ns(source);if(c->verify_sha256)item.digest=sha256(source);}catch(...){++r->unknown_timestamp;return;}
+   try{item.modified=modified_ns(source);item.organize_time=system_ns_from_file_ns(item.modified);const auto metadata=sleela_media::read_capture_time(source.u8string());if(metadata.found){item.organize_time=metadata.unix_time_ns;item.timestamp_source=metadata.source;}if(c->verify_sha256)item.digest=sha256(source);}catch(...){++r->unknown_timestamp;return;}
    p->plan.push_back(std::move(item));
   };
   if(c->recursive){fs::recursive_directory_iterator it(p->roots[0],fs::directory_options::skip_permission_denied),end;for(;it!=end;){std::error_code ec;if(it->is_symlink(ec))it.disable_recursion_pending();else if(!ec)add(*it);it.increment(ec);}}
   else {fs::directory_iterator it(p->roots[0]),end;for(;it!=end;++it)add(*it);}
   r->files_seen=p->plan.size()+r->unknown_timestamp;r->eligible=p->plan.size();
-  std::sort(p->plan.begin(),p->plan.end(),[](const Plan&a,const Plan&b){return a.modified==b.modified?a.src<b.src:a.modified<b.modified;});
+  std::sort(p->plan.begin(),p->plan.end(),[](const Plan&a,const Plan&b){return a.organize_time==b.organize_time?a.src<b.src:a.organize_time<b.organize_time;});
   std::map<std::string,unsigned> sequence;
   for(auto &item:p->plan){
    const auto ext=lower(item.src.extension().string());const auto type=category(item.src);
    fs::path destination=type=="image"?p->roots[1]:(ext==".mov"?p->roots[2]:(ext==".mp4"||ext==".m4v")?p->roots[3]:(ext==".mpeg"||ext==".mpg")?p->roots[4]:p->roots[5]);
-   const auto stamp=timestamp(item.modified);const auto key=stamp+"|"+ext;std::ostringstream name;name<<stamp<<"_"<<std::setw(3)<<std::setfill('0')<<++sequence[key]<<ext;item.dst=destination/name.str();
+   const auto stamp=timestamp(item.organize_time);const auto key=stamp+"|"+ext;std::ostringstream name;name<<stamp<<"_"<<std::setw(3)<<std::setfill('0')<<++sequence[key]<<ext;item.dst=destination/name.str();
    if(fs::exists(item.dst)){item.state="collision-skipped";++r->collisions;}
   }
   *required=p->plan.size();if(out&&capacity<*required){put(r->status,sizeof(r->status),"BUFFER_TOO_SMALL");return -2;}
-  if(out)for(size_t i=0;i<p->plan.size();++i){const auto &item=p->plan[i];if(!put(out[i].source,sizeof(out[i].source),item.src.u8string())||!put(out[i].destination,sizeof(out[i].destination),item.dst.u8string())||!put(out[i].state,sizeof(out[i].state),item.state)||!put(out[i].sha256,sizeof(out[i].sha256),item.digest))throw std::runtime_error("UTF-8 path or digest exceeds ABI buffer");out[i].bytes=item.bytes;out[i].modified_time_ns=item.modified;}
+  if(out)for(size_t i=0;i<p->plan.size();++i){const auto &item=p->plan[i];if(!put(out[i].source,sizeof(out[i].source),item.src.u8string())||!put(out[i].destination,sizeof(out[i].destination),item.dst.u8string())||!put(out[i].state,sizeof(out[i].state),item.state)||!put(out[i].sha256,sizeof(out[i].sha256),item.digest)||!put(out[i].timestamp_source,sizeof(out[i].timestamp_source),item.timestamp_source))throw std::runtime_error("UTF-8 path or digest exceeds ABI buffer");out[i].bytes=item.bytes;out[i].modified_time_ns=item.modified;out[i].organize_time_ns=item.organize_time;}
   p->digest=c->verify_sha256!=0;p->dry_run=c->dry_run!=0;p->ready=(out!=nullptr);put(r->status,sizeof(r->status),c->dry_run?"Preview complete; no files changed.":"Preview complete; apply requires explicit confirmation.");return 0;
  }catch(const std::exception &e){put(r->status,sizeof(r->status),e.what());return -3;}
 }
