@@ -49,7 +49,7 @@ class ImagingWindow {
    safeCommandPath(cfg.aviDestination);
  }
  String bridgeArguments(ImagingConfig cfg) {
-  String command=quoted(safeText(bridgeInput)) + " --provider " + quoted(safeText(providerInput)) +
+  String command=(osPlatform()=="Windows" ? "call " : "") + quoted(safeText(bridgeInput)) + " --provider " + quoted(safeText(providerInput)) +
    " --source " + quoted(cfg.sourceDirectory) + " --images " + quoted(cfg.imageDestination) +
    " --mov " + quoted(cfg.movDestination) + " --mp4 " + quoted(cfg.mp4Destination) +
    " --mpeg " + quoted(cfg.mpegDestination) + " --avi " + quoted(cfg.aviDestination);
