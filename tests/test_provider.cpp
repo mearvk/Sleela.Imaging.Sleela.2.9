@@ -18,8 +18,9 @@ int main(){
  auto*p=sli_provider_create();assert(p);assert(sli_provider_abi_version()==SLI_PROVIDER_ABI_VERSION);
  sli_result r{};uint64_t needed=0;assert(sli_provider_preview(p,&c,&r,nullptr,0,&needed)==0);assert(needed==2);
  std::vector<sli_item> items(needed);assert(sli_provider_preview(p,&c,&r,items.data(),items.size(),&needed)==0);
+ assert(sli_provider_apply(p,1,&r)==-2); // size-query preview is not apply authority
  assert(sli_provider_apply(p,0,&r)==-2);
- c.recursive=0;assert(sli_provider_preview(p,&c,&r,nullptr,0,&needed)==0);assert(needed==1);
+ c.recursive=0;c.dry_run=0;assert(sli_provider_preview(p,&c,&r,nullptr,0,&needed)==0);assert(needed==1);
  items.resize(needed);assert(sli_provider_preview(p,&c,&r,items.data(),items.size(),&needed)==0);
  assert(sli_provider_apply(p,1,&r)==0);assert(r.published==1);assert(fs::exists(base/"src"/"photo.JPG"));
  assert(fs::directory_iterator(base/"images")!=fs::directory_iterator{});
