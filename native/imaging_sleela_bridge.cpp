@@ -105,7 +105,8 @@ bool write_review_text(const std::string &path, const sli_result &result,
     for (uint64_t i = 0; i < count; ++i) {
         const auto &item = items[static_cast<size_t>(i)];
         report << display_path(item.source) << " -> " << display_path(item.destination)
-               << " [" << item.state << ", " << item.bytes << " bytes, timestamp=" << item.timestamp_source << ", timezone="\n               << (item.timestamp_timezone_known ? "known" : "unknown") << "]\n";
+               << " [" << item.state << ", " << item.bytes << " bytes, timestamp=" << item.timestamp_source
+               << ", timezone=" << (item.timestamp_timezone_known ? "known" : "unknown") << "]\n";
     }
     return write_no_replace(report_path, report.str());
 }
