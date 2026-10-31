@@ -29,8 +29,10 @@ typedef struct {
 typedef struct {
  char source[SLI_PATH_CAPACITY], destination[SLI_PATH_CAPACITY], state[32];
  char sha256[65]; /* lowercase SHA-256 captured during preview; empty when disabled */
+ char timestamp_source[24]; /* EXIF, QuickTime, or filesystem fallback provenance */
  uint64_t bytes;
- int64_t modified_time_ns;
+ int64_t modified_time_ns; /* original filesystem time, retained for source-change checks */
+ int64_t organize_time_ns; /* effective metadata time or fallback, Unix nanoseconds */
 } sli_item;
 SLI_API uint32_t sli_provider_abi_version(void);
 SLI_API const char *sli_provider_version(void);
