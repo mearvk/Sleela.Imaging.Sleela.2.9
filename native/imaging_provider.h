@@ -1,6 +1,15 @@
 #ifndef SLEELA_IMAGING_PROVIDER_H
 #define SLEELA_IMAGING_PROVIDER_H
 #include <stdint.h>
+#if defined(_WIN32)
+# if defined(SLI_PROVIDER_BUILD)
+#  define SLI_API __declspec(dllexport)
+# else
+#  define SLI_API __declspec(dllimport)
+# endif
+#else
+# define SLI_API __attribute__((visibility("default")))
+#endif
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -22,15 +31,15 @@ typedef struct {
  uint64_t bytes;
  int64_t modified_time_ns;
 } sli_item;
-uint32_t sli_provider_abi_version(void);
-const char *sli_provider_version(void);
-sli_provider *sli_provider_create(void);
-void sli_provider_destroy(sli_provider *provider);
+SLI_API uint32_t sli_provider_abi_version(void);
+SLI_API const char *sli_provider_version(void);
+SLI_API sli_provider *sli_provider_create(void);
+SLI_API void sli_provider_destroy(sli_provider *provider);
 /* Call with items=nullptr, then allocate required entries and call again. */
-int32_t sli_provider_preview(sli_provider *, const sli_config *, sli_result *,
+SLI_API int32_t sli_provider_preview(sli_provider *, const sli_config *, sli_result *,
                              sli_item *, uint64_t capacity, uint64_t *required);
 /* Apply only accepts the exact process-local plan produced by the last preview. */
-int32_t sli_provider_apply(sli_provider *, uint32_t confirmed, sli_result *);
+SLI_API int32_t sli_provider_apply(sli_provider *, uint32_t confirmed, sli_result *);
 #ifdef __cplusplus
 }
 #endif
