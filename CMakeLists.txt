@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(SLeeLaImaging VERSION 2.9.0 LANGUAGES CXX)
 
-add_executable(sleela-imaging native/imaging.cpp)
+add_executable(sleela-imaging native/imaging.cpp native/media_metadata.cpp)
 target_compile_features(sleela-imaging PRIVATE cxx_std_17)
 set_target_properties(sleela-imaging PROPERTIES CXX_EXTENSIONS OFF)
 if(MSVC)
