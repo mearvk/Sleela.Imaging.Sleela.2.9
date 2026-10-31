@@ -7,7 +7,7 @@ The provider is implemented in `native/imaging_provider.cpp` and exposed by `nat
 - Enumeration accepts supported regular media files and excludes symbolic links. Recursive traversal disables descent into symlink entries.
 - Preview resolves an effective organizer timestamp from embedded metadata when supported, otherwise from filesystem modification time. The original modification time remains separately recorded for stale-source validation.
 - JPEG/TIFF EXIF priority is DateTimeOriginal, DateTimeDigitized, then TIFF DateTime. QuickTime/ISO-BMFF priority is the `©day` date item, then `mvhd` creation time. Unsupported, malformed, or absent metadata falls back to filesystem mtime; it is never replaced with the current date.
-- EXIF date strings with no offset are treated as local wall time and explicitly marked timezone-unknown. EXIF offset tags and QuickTime UTC/offset values are honored when present.
+- EXIF date strings with no offset are treated as local wall time and explicitly marked timezone-unknown. EXIF offset tags and QuickTime UTC/offset values are honored when present. Filesystem modification times are absolute instants and are marked timezone-known.
 - Preview produces a process-local plan, proposed destinations, collision states, effective timestamp, and timestamp provenance.
 - Apply requires a fully materialized fresh plan (not a size-query or undersized-buffer preview), dry_run=0, explicit confirmation, and SHA-256 enabled.
 - Preview captures each source SHA-256 digest in the process-local plan and reviewed manifest. Apply rechecks source type, size, modification time, and digest; stages a copy beside the destination; verifies byte count and reviewed SHA-256; and publishes using atomic no-overwrite hard-link creation.
