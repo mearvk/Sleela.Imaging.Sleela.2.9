@@ -30,6 +30,11 @@ def main():
         original = roots[0] / "sample.jpg"
         original.write_bytes(b"reviewed image bytes")
         plan = root / "review.plan"
+        protected_plan = root / "user-data.plan"
+        protected_plan.write_text("do not overwrite this file\\n", encoding="utf-8")
+        protected = run(bridge, provider, roots, "--plan-file", protected_plan)
+        assert protected.returncode == 6, protected.stdout + protected.stderr
+        assert protected_plan.read_text(encoding="utf-8") == "do not overwrite this file\\n"
 
         preview = run(bridge, provider, roots, "--plan-file", plan)
         assert preview.returncode == 0, preview.stdout + preview.stderr
