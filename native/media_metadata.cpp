@@ -68,21 +68,24 @@ int64_t make_ns(int year,int month,int day,int hour,int minute,int second,int na
     const int month_days[]={31,leap?29:28,31,30,31,30,31,31,30,31,30,31};
     if(day>month_days[month-1])return 0;
     std::tm tm{};tm.tm_year=year-1900;tm.tm_mon=month-1;tm.tm_mday=day;tm.tm_hour=hour;tm.tm_min=minute;tm.tm_sec=std::min(second,59);
-    std::time_t value;
-    if(has_zone) {
-#ifdef _WIN32
-        value=_mkgmtime(&tm);
-#else
-        value=timegm(&tm);
-#endif
-        value-=static_cast<std::time_t>(zone_minutes)*60;
+    int64_t seconds=0;
+    if(has_zone){
+        const int adjusted_year=year-(month<=2?1:0);
+        const int64_t era=(adjusted_year>=0?adjusted_year:adjusted_year-399)/400;
+        const unsigned year_of_era=static_cast<unsigned>(adjusted_year-era*400);
+        const unsigned shifted_month=static_cast<unsigned>(month+(month>2?-3:9));
+        const unsigned day_of_year=(153*shifted_month+2)/5+static_cast<unsigned>(day)-1;
+        const unsigned day_of_era=year_of_era*365+year_of_era/4-year_of_era/100+day_of_year;
+        const int64_t days=era*146097+static_cast<int64_t>(day_of_era)-719468;
+        seconds=days*86400+hour*3600+minute*60+std::min(second,59);
+        seconds-=static_cast<int64_t>(zone_minutes)*60;
         zone_known=true;
     } else {
-        value=std::mktime(&tm);
+        const std::time_t local=std::mktime(&tm);
+        if(local==static_cast<std::time_t>(-1))return 0;
+        seconds=static_cast<int64_t>(local);
         zone_known=false;
     }
-    if(value==static_cast<std::time_t>(-1)) return 0;
-    const auto seconds=static_cast<int64_t>(value);
     if(seconds>std::numeric_limits<int64_t>::max()/1000000000LL || seconds<std::numeric_limits<int64_t>::min()/1000000000LL) return 0;
     return seconds*1000000000LL+nanos;
 }
