@@ -24,7 +24,7 @@ std::string lower(std::string s){for(char &c:s)c=char(std::tolower(static_cast<u
 std::string category(const fs::path &p){const auto e=lower(p.extension().string());static const std::vector<std::string> images={".jpg",".jpeg",".heic",".png",".tif",".tiff",".bmp",".gif",".webp"};static const std::vector<std::string> videos={".mov",".mp4",".mpeg",".mpg",".avi",".m4v"};if(std::find(images.begin(),images.end(),e)!=images.end())return "image";if(std::find(videos.begin(),videos.end(),e)!=videos.end())return "video";return {};}
 bool inside(const fs::path &p,const fs::path &root){auto rel=p.lexically_relative(root);return !rel.empty()&&!rel.is_absolute()&&*rel.begin()!="..";}
 bool overlaps(const fs::path &a,const fs::path &b){return a==b||inside(a,b)||inside(b,a);}
-fs::path canonical_root(const char *s){if(!s||!*s)throw std::runtime_error("empty directory root");std::error_code ec;auto p=fs::canonical(fs::path(s),ec);if(ec||!fs::is_directory(p))throw std::runtime_error("all six roots must be existing directories");return p;}
+fs::path canonical_root(const char *s){if(!s||!std::memchr(s,'\\0',SLI_PATH_CAPACITY)||!*s)throw std::runtime_error("empty directory root");std::error_code ec;auto p=fs::canonical(fs::path(s),ec);if(ec||!fs::is_directory(p))throw std::runtime_error("all six roots must be existing directories");return p;}
 int64_t modified_ns(const fs::path &p){std::error_code ec;auto t=fs::last_write_time(p,ec);if(ec)throw std::runtime_error("cannot read modification time");return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();}
 std::string timestamp(int64_t ns){auto ft=fs::file_time_type(std::chrono::nanoseconds(ns));auto st=std::chrono::time_point_cast<std::chrono::system_clock::duration>(ft-fs::file_time_type::clock::now()+std::chrono::system_clock::now());auto raw=std::chrono::system_clock::to_time_t(st);std::tm tm{};
 #ifdef _WIN32
@@ -35,7 +35,7 @@ std::string timestamp(int64_t ns){auto ft=fs::file_time_type(std::chrono::nanose
  std::ostringstream out;out<<std::put_time(&tm,"%Y-%m-%d_%H-%M-%S");return out.str();}
 std::string sha256(const fs::path &p){std::ifstream in(p,std::ios::binary);if(!in)throw std::runtime_error("cannot open file for SHA-256");EVP_MD_CTX *ctx=EVP_MD_CTX_new();if(!ctx)throw std::runtime_error("cannot allocate digest context");unsigned char digest[EVP_MAX_MD_SIZE];unsigned int length=0;bool ok=EVP_DigestInit_ex(ctx,EVP_sha256(),nullptr)==1;char buffer[65536];while(ok&&in){in.read(buffer,sizeof(buffer));auto n=in.gcount();if(n>0)ok=EVP_DigestUpdate(ctx,buffer,static_cast<size_t>(n))==1;}ok=ok&&in.eof()&&EVP_DigestFinal_ex(ctx,digest,&length)==1;EVP_MD_CTX_free(ctx);if(!ok||length!=32)throw std::runtime_error("SHA-256 operation failed");std::ostringstream out;out<<std::hex<<std::setfill('0');for(unsigned i=0;i<length;++i)out<<std::setw(2)<<static_cast<unsigned>(digest[i]);return out.str();}
 }
-struct sli_provider { std::vector<fs::path> roots; std::vector<Plan> plan; bool ready=false; bool digest=false; };
+struct sli_provider { std::vector<fs::path> roots; std::vector<Plan> plan; bool ready=false; bool digest=false; bool dry_run=true; };
 extern "C" {
 uint32_t sli_provider_abi_version(void){return SLI_PROVIDER_ABI_VERSION;}
 const char *sli_provider_version(void){return "1.0.0";}
@@ -67,13 +67,13 @@ int32_t sli_provider_preview(sli_provider *p,const sli_config *c,sli_result *r,s
   }
   *required=p->plan.size();if(out&&capacity<*required){put(r->status,sizeof(r->status),"BUFFER_TOO_SMALL");return -2;}
   if(out)for(size_t i=0;i<p->plan.size();++i){const auto &item=p->plan[i];if(!put(out[i].source,sizeof(out[i].source),item.src.u8string())||!put(out[i].destination,sizeof(out[i].destination),item.dst.u8string())||!put(out[i].state,sizeof(out[i].state),item.state))throw std::runtime_error("UTF-8 path exceeds ABI buffer");out[i].bytes=item.bytes;out[i].modified_time_ns=item.modified;}
-  p->digest=c->verify_sha256!=0;p->ready=true;put(r->status,sizeof(r->status),c->dry_run?"Preview complete; no files changed.":"Preview complete; apply requires explicit confirmation.");return 0;
+  p->digest=c->verify_sha256!=0;p->dry_run=c->dry_run!=0;p->ready=(out!=nullptr);put(r->status,sizeof(r->status),c->dry_run?"Preview complete; no files changed.":"Preview complete; apply requires explicit confirmation.");return 0;
  }catch(const std::exception &e){put(r->status,sizeof(r->status),e.what());return -3;}
 }
 int32_t sli_provider_apply(sli_provider *p,uint32_t confirmed,sli_result *r){
  if(!p||!r) return -1;
  std::memset(r,0,sizeof(*r));
- if(!p->ready||!confirmed||!p->digest){put(r->status,sizeof(r->status),"DENIED: fresh preview, confirmation, and SHA-256 are required.");return -2;}
+ if(!p->ready||p->dry_run||!confirmed||!p->digest){put(r->status,sizeof(r->status),"DENIED: fresh preview, confirmation, and SHA-256 are required.");return -2;}
  for(auto &item:p->plan){
   if(item.state=="collision-skipped")continue;
   fs::path temporary;try{
