@@ -125,7 +125,7 @@ bool tiff_date(Reader &r,uint64_t tiff,uint64_t end,CaptureTime &out) {
         for(uint16_t i=0;i<count;++i){const uint64_t e=off+2+uint64_t(i)*12;uint16_t tag=0;if(!r.u16(e,le,tag))continue;
             if(tag==0x8769&&!exif)r.u32(e+8,le,exif_ifd);
             if(tag==0x0132&&!exif)fallback=tiff_ascii(r,tiff,e,le);
-            if(tag==0x9003&&exif)original=tiff_ascii(r,e,le);
+            if(tag==0x9003&&exif)original=tiff_ascii(r,tiff,e,le);
             if(tag==0x9004&&exif&&original.empty())fallback=tiff_ascii(r,e,le);
             if(tag==0x9011&&exif)offset_original=tiff_ascii(r,e,le);
             if(tag==0x9010&&!exif)offset_fallback=tiff_ascii(r,e,le);
