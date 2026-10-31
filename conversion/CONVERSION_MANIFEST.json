@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "conversion": {
+    "source_repository": "https://github.com/mearvk/Java.Imaging.Java.21",
+    "destination_repository": "https://github.com/mearvk/Sleela.Imaging.Sleela.2.9",
+    "target_language": "SLeeLa",
+    "target_language_version": "2.9",
+    "status": "source-port-in-progress",
+    "compiler_verified": false,
+    "runtime_verified": false,
+    "platform_verified": false
+  },
+  "mappings": [
+    {"source_role":"pennywise.Main","destination":"src/ImagingApplication.sleela","status":"adapted","notes":"Planning/orchestration scaffold; complete scan/apply workflow remains deferred."},
+    {"source_role":"ImageMetadataReader","destination":"src/MediaDateResolver.sleela plus ImagingFileSystem metadata bridge","status":"adapted","notes":"Date precedence modeled; actual format parsers and native metadata reads remain deferred."},
+    {"source_role":"XMLHandler/configuration","destination":"src/ImagingConfig.sleela","status":"adapted","notes":"Typed configuration model; configuration loading and schema validation remain deferred."},
+    {"source_role":"extension classification","destination":"src/MediaClassifier.sleela","status":"ported","notes":"Extension classification only; does not establish decoder or metadata support."},
+    {"source_role":"date-based naming","destination":"src/MediaNaming.sleela","status":"adapted","notes":"Naming helper scaffold; locale/timezone policy and collision allocation require validation."},
+    {"source_role":"filesystem copy/move behavior","destination":"src/ImagingFileSystem.sleela","status":"deferred","notes":"Bridge methods are sentinels and do not perform I/O."},
+    {"source_role":"network key/certificate/database behavior","destination":"SECURITY.md and docs/SECURITY_MODEL.md","status":"rejected","notes":"Excluded from the local organizer core; any future integration requires separate opt-in design and review."}
+  ],
+  "status_vocabulary": ["ported","adapted","deferred","rejected"],
+  "evidence_policy": "Never mark a feature complete without source review and an executable test or a documented external verification artifact."
+}
