@@ -1,9 +1,8 @@
 name: Native build
 
+# Deliberately manual-only: pushes do not start CI unless the maintainer
+# explicitly dispatches this workflow.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
