@@ -1,0 +1,16 @@
+<< Conservative policy for personal media. >>
+#sleela 2.9
+material;
+class ImagingSafetyPolicy {
+  boolean validRoots(String source, String images, String videos) {
+    if (source=="" || images=="" || videos=="") return false;
+    if (source==images || source==videos) return false;
+    return true;
+  }
+  boolean mayApply(boolean confirmed, boolean dryRun,
+                   boolean verified, boolean sourcePreserved) {
+    return confirmed && !dryRun && verified && sourcePreserved;
+  }
+  boolean mayFollowSymbolicLink(boolean configured) { return configured; }
+  boolean mayDeleteSource(boolean separateCleanupRequested) { return false; }
+}

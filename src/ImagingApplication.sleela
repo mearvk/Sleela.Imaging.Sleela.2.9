@@ -1,0 +1,53 @@
+<< SLeeLa-native orchestration for chronological image/video organization. >>
+#sleela 2.9
+material;
+class ImagingApplication {
+  ImagingConfig config;
+  ImagingFileSystem filesystem;
+  MediaClassifier classifier;
+  MediaDateResolver dates;
+  MediaNaming naming;
+  ImagingSafetyPolicy safety;
+
+  void configure(ImagingConfig value) {
+    config=value;
+    filesystem=new ImagingFileSystem();
+    classifier=new MediaClassifier();
+    dates=new MediaDateResolver();
+    naming=new MediaNaming();
+    safety=new ImagingSafetyPolicy();
+  }
+  boolean ready() {
+    if (config==null || !config.isConfigured()) return false;
+    return safety.validRoots(config.sourceDirectory,
+      config.imageDestination, config.movDestination);
+  }
+  < This produces a plan record only; it performs no file operation. >
+  MediaRecord planCandidate(String path, String originalName, String extension,
+      long embeddedTime, long modifiedTime, String localTimestamp,
+      int collisionSequence, long byteCount) {
+    MediaRecord r=new MediaRecord();
+    r.sourcePath=path;
+    r.originalName=originalName;
+    r.extension=extension.toLowerCase();
+    r.category=classifier.category(extension);
+    r.captureTime=dates.resolve(embeddedTime,modifiedTime);
+    r.dateSource=dates.source(embeddedTime,modifiedTime);
+    r.byteCount=byteCount;
+    if (r.category=="image") r.destinationDirectory=config.imageDestination;
+    if (r.category=="video") r.destinationDirectory=config.videoDestination(r.extension);
+    r.destinationName=naming.fileName(localTimestamp,collisionSequence,r.extension);
+    r.state=r.isEligible() ? "planned" : "rejected";
+    return r;
+  }
+  boolean mayApplyPlan(boolean confirmed, boolean destinationVerified,
+                       boolean sourcePreserved) {
+    return safety.mayApply(confirmed,config.dryRun,
+      destinationVerified,sourcePreserved);
+  }
+  String status() {
+    if (!ready()) return "configuration-invalid-or-incomplete";
+    if (filesystem.bridgeStatus!="bound") return "filesystem-bridge-required";
+    return "ready";
+  }
+}

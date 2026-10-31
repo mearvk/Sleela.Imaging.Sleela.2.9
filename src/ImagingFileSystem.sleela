@@ -1,0 +1,21 @@
+<< OS/VM filesystem adapter contract. >>
+#sleela 2.9
+material;
+< Bind these operations to the native filesystem provider for each target OS.
+  Front-end declarations alone do not perform operating-system I/O. >
+class ImagingFileSystem {
+  String bridgeName="SLeeLa filesystem VM/OS bridge";
+  String bridgeStatus="unbound";
+  String listFiles(String directory, boolean recursive) {
+    return "BRIDGE_REQUIRED:listFiles";
+  }
+  String canonicalPath(String path) { return "BRIDGE_REQUIRED:canonicalPath"; }
+  boolean isRegularFile(String path) { return false; }
+  long readEmbeddedCaptureTime(String path) { return 0; }
+  long modifiedTime(String path) { return 0; }
+  boolean copyAndVerify(String source, String temporaryDestination,
+                        boolean verifyDigest) { return false; }
+  boolean publishAtomically(String temporaryDestination,
+                            String finalDestination) { return false; }
+  boolean writeReport(String destination, String reportText) { return false; }
+}

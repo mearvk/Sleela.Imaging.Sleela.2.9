@@ -1,0 +1,30 @@
+<< Policy checks for the SLeeLa Imaging source port. >>
+#sleela 2.9
+material;
+class ImagingPolicyTests {
+  boolean classifier() {
+    MediaClassifier c=new MediaClassifier();
+    return c.isImage(".jpg") && c.isImage(".heic") &&
+      c.isImage(".png") && c.isVideo(".mov") &&
+      c.isVideo(".mp4") && !c.isVideo(".jpg") &&
+      !c.isImage(".exe");
+  }
+  boolean dates() {
+    MediaDateResolver d=new MediaDateResolver();
+    return d.resolve(1000,2000)==1000 &&
+      d.resolve(0,2000)==2000 && d.resolve(0,0)==0 &&
+      d.source(1000,2000)=="embedded-metadata" &&
+      d.source(0,2000)=="filesystem-modified-time";
+  }
+  boolean safety() {
+    ImagingSafetyPolicy p=new ImagingSafetyPolicy();
+    return p.validRoots("/photos","/out/images","/out/videos") &&
+      !p.validRoots("","/out/images","/out/videos") &&
+      !p.mayApply(false,false,true,true) &&
+      !p.mayApply(true,true,true,true) &&
+      !p.mayApply(true,false,false,true) &&
+      !p.mayApply(true,false,true,false) &&
+      p.mayApply(true,false,true,true) && !p.mayDeleteSource(true);
+  }
+  boolean runAll() { return classifier() && dates() && safety(); }
+}
