@@ -6,7 +6,7 @@ class ImagingWindow {
  int bridgeInput=-1; int providerInput=-1; int planInput=-1;
  int recursiveCheck=-1; int dryRunCheck=-1; int digestCheck=-1; int confirmCheck=-1;
  int previewButton=-1; int applyButton=-1; int quitButton=-1;
- boolean running=false; boolean previewReady=false;
+ boolean running=false; boolean previewReady=false; boolean explicitReview=false;
  ImagingSession session;
  void setStatus(String message) { if (statusLabel>=0) uiWidgetSetText(statusLabel,message); }
  String safeText(int widget) { String value=uiWidgetGetText(widget); return value==null ? "" : value; }
@@ -30,7 +30,7 @@ class ImagingWindow {
   int i=0;
   while (i<n) {
    String ch=charAt(value,i);
-   if (ch=="\"" || ch=="$" || ch=="\`" || ch=="&" || ch=="|" ||
+   if (ch=="\"" || ch=="$" || ch=="`" || ch=="&" || ch=="|" ||
        ch==";" || ch=="<" || ch==">" || ch=="(" || ch==")" ||
        ch=="%" || ch=="!" || ch=="^" || ch=="\n" || ch=="\r") return false;
    if (!windows && ch=="\\") return false;
@@ -56,7 +56,7 @@ class ImagingWindow {
   return command;
  }
  void updateApplySensitivity() {
-  boolean allowed=previewReady && uiWidgetGetToggle(confirmCheck)==1 &&
+  boolean allowed=previewReady && explicitReview && uiWidgetGetToggle(confirmCheck)==1 &&
    uiWidgetGetToggle(dryRunCheck)==0 && uiWidgetGetToggle(digestCheck)==1;
   uiWidgetSensitive(applyButton,allowed ? 1 : 0);
  }
@@ -105,7 +105,7 @@ class ImagingWindow {
    int dispatched=uiAppPump(app,1);
    if (dispatched<0) { setStatus("UI event provider reported an error. No media operation was started."); running=false; }
    if (uiWidgetTakeActivated(previewButton)==1) {
-    ImagingConfig cfg=readConfig(); previewReady=false; uiWidgetSensitive(applyButton,0);
+    ImagingConfig cfg=readConfig(); previewReady=false; explicitReview=false; uiWidgetSensitive(applyButton,0);
     if (!cfg.isConfigured()) setStatus("BLOCKED: complete all six source and destination paths.");
     else if (!cfg.verifyDigest) setStatus("BLOCKED: SHA-256 verification must remain enabled.");
     else if (!validBridgeConfiguration(cfg)) setStatus("BLOCKED: bridge, provider, plan, and directory paths must be safe quoted paths without shell metacharacters.");
@@ -124,22 +124,23 @@ class ImagingWindow {
        uiWidgetTakeActivated(digestCheck)==1) {
     ImagingConfig current=readConfig();
     if (previewReady && !session.sameConfiguration(current)) {
-     previewReady=false; setStatus("Configuration changed. Preview again before applying.");
-    }
+     previewReady=false; explicitReview=false; setStatus("Configuration changed. Preview again before applying.");
+    } else if (previewReady && uiWidgetGetToggle(confirmCheck)==1) explicitReview=true;
+    else explicitReview=false;
     updateApplySensitivity();
    }
    if (uiWidgetTakeActivated(applyButton)==1) {
     ImagingConfig current=readConfig();
-    if (!previewReady || !session.sameConfiguration(current)) {
-     previewReady=false; setStatus("DENIED: configuration differs from the reviewed preview. Preview again.");
+    if (!previewReady || !explicitReview || !session.sameConfiguration(current)) {
+     previewReady=false; explicitReview=false; setStatus("DENIED: configuration differs from the reviewed preview or has not been freshly confirmed. Preview again and confirm.");
     } else if (current.dryRun || !current.verifyDigest || uiWidgetGetToggle(confirmCheck)!=1) {
      setStatus("DENIED: disable dry run, retain SHA-256, and explicitly confirm the reviewed report.");
     } else if (!validBridgeConfiguration(current)) {
-     previewReady=false; setStatus("DENIED: one or more command paths are unsafe or invalid.");
+     previewReady=false; explicitReview=false; setStatus("DENIED: one or more command paths are unsafe or invalid.");
     } else {
      String command=bridgeArguments(current) + " --expect-plan " + quoted(safeText(planInput)) + " --apply --confirm";
      int rc=osRun(command);
-     previewReady=false;
+     previewReady=false; explicitReview=false;
      if (rc==0) setStatus("Apply completed. Originals were preserved. Review the bridge output for published and failed counts.");
      else setStatus("Apply denied or failed (process exit " + rc + "). Review the report and preview again.");
     }
