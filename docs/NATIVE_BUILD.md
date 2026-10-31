@@ -7,7 +7,6 @@ The project builds two C++17 targets: the existing standalone CLI and the shared
 - CMake 3.16+
 - C++17 compiler
 - Python 3
-- OpenSSL development headers and Crypto library
 
 ## Build and test
 
