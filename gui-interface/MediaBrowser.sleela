@@ -30,7 +30,7 @@
    display (uiAppCreate); with no display it reports that and exits cleanly.
 
    Run on the SLeeLa VM (source-built compiler, syntax 2.9):
-     SLEELA_HOME=/path/to/SLeeLa sleela run gui/MediaBrowser.sleela >>
+     SLEELA_HOME=/path/to/SLeeLa sleela run gui-interface/MediaBrowser.sleela >>
 #sleela 2.9
 material;
 class MediaBrowser {
@@ -109,7 +109,7 @@ class MediaBrowser {
       mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav";
   }
 
-  << ---- Inlined read-only folder scanner (mirrors gui/GalleryScanner.sleela).
+  << ---- Inlined read-only folder scanner (mirrors gui-interface/GalleryScanner.sleela).
      Enumerates image files in one directory via the VM osRun built-in using the
      fixed-POSIX, scalar-field technique of the project's ImagingFileSystem
      provider: results are written WITHOUT a trailing newline to per-record field
