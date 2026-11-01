@@ -34,9 +34,9 @@ not a mockup.*
 - **Menu bar**: File (Open Picture / Open Folder / Media Information / Quit),
   View (Picture Gallery / Video Player), and Help (Media Guide / About),
   implemented as a horizontal button strip with collapsible dropdown panels.
-- **Navigation header**: Prev / Next, a location field that doubles as the
-  folder-path input and tracks the current file, and a `local - no network`
-  badge.
+- **Navigation header**: Prev / Next, a location field that triples as the
+  folder-path input, the current-file display, and the YouTube URL field, plus
+  a `local - browser handoff` badge.
 - **Real on-disk folder browsing**: type a folder path in the location bar and
   choose **File - Open Folder**. The gallery enumerates the real image files in
   that directory (jpg/jpeg/png/gif/bmp/webp/tiff/tif, case-insensitive) and
@@ -50,6 +50,17 @@ not a mockup.*
 - **Video player**: a video canvas with full, **live** transport — Play /
   Pause / Stop, a seek slider that drives the position readout and the playback
   level bar, and a volume slider with a live `volume NN%` readout.
+- **YouTube streaming (browser handoff)**: paste a YouTube link in the location
+  bar and choose **Stream → Load URL**. The browser extracts the 11-character
+  video id (recognizing `watch?v=`, `youtu.be/`, `/embed/`, and `/shorts/`
+  shapes), shows the recognized video in the player card, and offers **Open in
+  browser** — a platform-aware launch (`xdg-open` / `open` / `cmd start`) that
+  plays the video in the user's real browser. It does **not** decode or embed
+  YouTube video in-app: SleelaUI has no video surface or network codec, so the
+  in-app transport is honestly gated off for a stream and playback is delegated
+  to the system browser rather than faked in the canvas. The URL id is parsed by
+  a small fixed shell command via `osRun` (the same scalar-field technique the
+  folder scanner uses); no media bytes are fetched by the program.
 - **State-aware controls**: the transport buttons enable and disable to match
   the player state (Play is off while playing; Pause/Stop are off while
   stopped), so the controls never misrepresent what will happen.
@@ -61,9 +72,13 @@ not a mockup.*
 Transport presentation is centralized in one `syncTransport()` routine so the
 caption, enabled controls, level bar, and status line can never drift apart.
 
-The browser owns no filesystem-mutating capability. Consistent with the
-project's security posture there is no network, telemetry, key upload, database
-logging, or source deletion; originals are never modified.
+The browser owns no filesystem-mutating capability and fetches no media bytes
+itself. Consistent with the project's security posture there is no telemetry,
+key upload, database logging, or source deletion; originals are never modified.
+The one outbound action is the explicit, user-initiated **Open in browser**
+handoff, which launches the system browser on a YouTube URL via the OS opener
+(`xdg-open` / `open` / `cmd start`); the program neither downloads nor embeds
+the video.
 
 ## Run it
 

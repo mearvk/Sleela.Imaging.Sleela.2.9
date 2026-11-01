@@ -25,6 +25,17 @@
    in the current state are disabled; and if the player codec is unavailable the
    whole transport is gated off rather than merely labelled.
 
+   YouTube support: the location bar doubles as a stream URL field. When it
+   holds a recognizable YouTube link, the browser extracts the 11-character
+   video id (via a small fixed shell command through the VM osRun built-in, the
+   same scalar-field technique the gallery scanner uses), shows the recognized
+   video in the player card, and offers "Open in browser" -- a platform-aware
+   handoff (xdg-open / open / cmd start) that plays the video in the user's real
+   browser. The browser does NOT decode or embed YouTube video itself: SleelaUI
+   has no video surface or network codec, so in-app transport is honestly gated
+   off for a stream and playback is delegated to the system browser rather than
+   faked in the canvas. No media bytes are fetched by this program.
+
    This program drives the native toolkit directly through the documented ui*
    SLVM bridge; it owns no filesystem-mutating capability. It requires a native
    display (uiAppCreate); with no display it reports that and exits cleanly.
@@ -79,8 +90,21 @@ class MediaBrowser {
   << Last seek position read from the slider, in whole seconds. >>
   int lastPos = 0;
 
+  << YouTube stream state. streamActive is true while the location bar holds a
+     recognized YouTube URL; streamId is the extracted 11-char video id and
+     streamUrl the canonical watch URL. A stream cannot be decoded in-app, so
+     the in-app transport is gated off and playback is handed to the browser. >>
+  boolean streamActive = false;
+  String streamId = "";
+  String streamUrl = "";
+  String streamParseDir = "";
+  << UI handles for the stream row (Open in browser). >>
+  int btnStreamOpen = -1; int streamCaption = -1;
+  int menuStreamButton = -1; int menuStreamPanel = -1;
+  int menuStreamLoad = -1; int menuStreamOpen = -1; int menuStreamClear = -1;
+
   << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
-  String metaVersion = "1.2.0";
+  String metaVersion = "1.3.0";
   int metaId = 2911;
   String metaAuthor = "Max Rupplin / MEARVK LLC";
   String metaDate = "2026-11-01";
@@ -173,6 +197,57 @@ class MediaBrowser {
     return readField(scanDir + "/" + i + ".path");
   }
 
+  << ---- YouTube URL support ----
+     SLeeLa primitive String has no indexOf/substring, so the 11-character
+     YouTube video id is extracted from the (opaque) URL by a small fixed shell
+     command through osRun, written WITHOUT a trailing newline to a per-run
+     field file and read back -- the same scalar-field technique the folder
+     scanner uses. The command is quoted and the URL is passed as a positional
+     argument so its contents can never change the command structure. No network
+     is touched: this only pattern-matches the id out of the URL text.
+     (Reuses the q() and readField() helpers defined for the folder scanner.) ---- >>
+
+  << Extract the 11-char video id from a YouTube URL, or "" when not YouTube.
+     Recognizes watch?v=, youtu.be/, /embed/, and /shorts/ shapes. >>
+  String youtubeId(String url) {
+    if (url == "") return "";
+    String base = osTempDir() + "/sleela-mb-yt";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-mb-yt"; osMakeDir(base); }
+    streamParseDir = base + "/run-" + timeUtcMillis();
+    osMakeDir(streamParseDir);
+    if (osIsDir(streamParseDir) != 1) return "";
+    String f = streamParseDir + "/id.txt";
+    << $1 is the URL (positional, never interpolated into the program text). The
+       grep pulls an id that follows one of the known YouTube markers, then the
+       second grep keeps only the 11-char id token. Empty file on no match. >>
+    osRun("sh -c 'printf %s \"$1\" "
+      + "| grep -oE \"([?&]v=|youtu[.]be/|/embed/|/shorts/)[A-Za-z0-9_-]{11}\" "
+      + "| grep -oE \"[A-Za-z0-9_-]{11}$\" "
+      + "| head -1 | tr -d \"\\n\" > " + q(f) + " || : > " + q(f) + "' sh " + q(url));
+    return readField(f);
+  }
+
+  boolean looksYouTube(String url) { return youtubeId(url) != ""; }
+
+  << Platform-aware external open of a URL in the user's browser. Returns true
+     when the launcher reported success (exit 0). Honestly reports failure (for
+     example on a headless host with no opener) rather than pretending. >>
+  boolean openExternally(String url) {
+    if (url == "") return false;
+    String plat = osPlatform();
+    int rc = -1;
+    if (plat == "macOS") {
+      rc = osRun("sh -c 'open \"$1\"' sh " + q(url));
+    } else if (plat == "Windows") {
+      rc = osRun("cmd /c start \"\" " + q(url));
+    } else {
+      << Linux and others: try xdg-open, then a couple of common fallbacks. >>
+      rc = osRun("sh -c 'xdg-open \"$1\" 2>/dev/null || gio open \"$1\" 2>/dev/null || sensible-browser \"$1\" 2>/dev/null' sh " + q(url));
+    }
+    return rc == 0;
+  }
+
   << Name of the current gallery entry: a real file when a folder is loaded,
      otherwise one of the built-in demo names. >>
   String demoName(int i) {
@@ -252,7 +327,8 @@ class MediaBrowser {
     openMenuIndex = next;
     uiWidgetVisible(menuFilePanel, next == 0 ? 1 : 0);
     uiWidgetVisible(menuViewPanel, next == 1 ? 1 : 0);
-    uiWidgetVisible(menuHelpPanel, next == 2 ? 1 : 0);
+    uiWidgetVisible(menuStreamPanel, next == 2 ? 1 : 0);
+    uiWidgetVisible(menuHelpPanel, next == 3 ? 1 : 0);
   }
 
   << Repaint the gallery caption and reflect the current file in the location
@@ -283,9 +359,17 @@ class MediaBrowser {
      controls, and the playback level bar all follow from (playable, playing,
      lastPos). Called after every state change and every seek. >>
   void syncTransport() {
+    << A YouTube stream cannot be decoded or embedded in-app (no video surface
+       or network codec in SleelaUI), so the in-app transport is gated off and
+       the caption points the user at the browser handoff. >>
+    boolean localActive = playable && !streamActive;
     if (videoCaption >= 0) {
-      String s = !playable ? "transport: unavailable (codec not supported)"
-        : playing ? "transport: playing" : (lastPos > 0 ? "transport: paused" : "transport: stopped");
+      String s;
+      if (streamActive) s = "YouTube stream: open in browser to play";
+      else if (!playable) s = "transport: unavailable (codec not supported)";
+      else if (playing) s = "transport: playing";
+      else if (lastPos > 0) s = "transport: paused";
+      else s = "transport: stopped";
       uiWidgetSetText(videoCaption, s);
     }
     if (positionLabel >= 0) uiWidgetSetText(positionLabel, positionText(lastPos));
@@ -294,11 +378,55 @@ class MediaBrowser {
       uiWidgetSetValue(playbackLevel, frac);
     }
     << Enable only the controls that apply in the current state. >>
-    if (btnPlay >= 0) uiWidgetSensitive(btnPlay, (playable && !playing) ? 1 : 0);
-    if (btnPause >= 0) uiWidgetSensitive(btnPause, (playable && playing) ? 1 : 0);
-    if (btnStop >= 0) uiWidgetSensitive(btnStop, (playable && (playing || lastPos > 0)) ? 1 : 0);
-    if (seekSlider >= 0) uiWidgetSensitive(seekSlider, playable ? 1 : 0);
-    if (volumeSlider >= 0) uiWidgetSensitive(volumeSlider, playable ? 1 : 0);
+    if (btnPlay >= 0) uiWidgetSensitive(btnPlay, (localActive && !playing) ? 1 : 0);
+    if (btnPause >= 0) uiWidgetSensitive(btnPause, (localActive && playing) ? 1 : 0);
+    if (btnStop >= 0) uiWidgetSensitive(btnStop, (localActive && (playing || lastPos > 0)) ? 1 : 0);
+    if (seekSlider >= 0) uiWidgetSensitive(seekSlider, localActive ? 1 : 0);
+    if (volumeSlider >= 0) uiWidgetSensitive(volumeSlider, localActive ? 1 : 0);
+    << The browser-handoff action is live only while a stream is recognized. >>
+    if (btnStreamOpen >= 0) uiWidgetSensitive(btnStreamOpen, streamActive ? 1 : 0);
+    if (streamCaption >= 0)
+      uiWidgetSetText(streamCaption, streamActive
+        ? ("stream: youtube id " + streamId)
+        : "stream: paste a YouTube URL in the location bar, then Stream - Load URL");
+  }
+
+  << Recognize the location bar as a YouTube URL and switch the player card to
+     stream mode. Returns true when a stream was loaded. >>
+  boolean loadStream(String url) {
+    String id = youtubeId(url);
+    if (id == "") {
+      setStatus("Not a recognized YouTube URL: " + url);
+      return false;
+    }
+    streamActive = true;
+    streamId = id;
+    streamUrl = "https://www.youtube.com/watch?v=" + id;
+    playing = false;
+    lastPos = 0;
+    if (seekSlider >= 0) uiWidgetSetValue(seekSlider, 0.0);
+    syncTransport();
+    setStatus("YouTube video " + id + " recognized. Open in browser to play (in-app video is not decoded).");
+    return true;
+  }
+
+  << Leave stream mode and return to the local demo player. >>
+  void clearStream() {
+    streamActive = false;
+    streamId = "";
+    streamUrl = "";
+    syncTransport();
+    setStatus("Stream cleared. Local player restored.");
+  }
+
+  << Hand the current stream to the system browser for actual playback. >>
+  void openStream() {
+    if (!streamActive) { setStatus("No YouTube URL loaded. Stream - Load URL first."); return; }
+    if (openExternally(streamUrl)) {
+      setStatus("Opened " + streamUrl + " in the system browser.");
+    } else {
+      setStatus("Could not launch a browser for " + streamUrl + " (no opener on this host). URL is ready to copy.");
+    }
   }
 
   void playMedia() {
@@ -373,6 +501,7 @@ class MediaBrowser {
     uiWidgetMargin(menuStrip, 4, 8, 4, 8);
     menuFileButton = uiButton(menuStrip, "File");
     menuViewButton = uiButton(menuStrip, "View");
+    menuStreamButton = uiButton(menuStrip, "Stream");
     menuHelpButton = uiButton(menuStrip, "Help");
     uiSpacer(menuStrip);
 
@@ -389,6 +518,13 @@ class MediaBrowser {
     menuViewGallery = uiButton(menuViewPanel, "Picture Gallery");
     menuViewPlayer = uiButton(menuViewPanel, "Video Player");
     uiWidgetVisible(menuViewPanel, 0);
+
+    menuStreamPanel = uiBox(root, 0, 2);
+    uiWidgetMargin(menuStreamPanel, 4, 10, 4, 10);
+    menuStreamLoad = uiButton(menuStreamPanel, "Load URL from location bar");
+    menuStreamOpen = uiButton(menuStreamPanel, "Open in browser");
+    menuStreamClear = uiButton(menuStreamPanel, "Clear stream");
+    uiWidgetVisible(menuStreamPanel, 0);
 
     menuHelpPanel = uiBox(root, 0, 2);
     uiWidgetMargin(menuHelpPanel, 4, 10, 4, 10);
@@ -465,6 +601,17 @@ class MediaBrowser {
     playbackLevel = uiLevelBar(lrow, 0.0);
     uiWidgetExpand(playbackLevel, 1, 0);
 
+    << YouTube stream row: recognized-video caption + browser handoff. In-app
+       decode is not possible, so playback is delegated to the system browser. >>
+    uiSeparator(pBox, 1);
+    streamCaption = uiLabel(pBox, "stream: paste a YouTube URL in the location bar, then Stream - Load URL");
+    int srow = uiBox(pBox, 1, 8);
+    btnStreamOpen = uiButton(srow, "Open in browser"); uiWidgetSuggested(btnStreamOpen, 1);
+    uiTooltip(btnStreamOpen, "Play the recognized YouTube video in your browser");
+    uiWidgetSensitive(btnStreamOpen, 0);
+    uiSpacer(srow);
+    uiBadge(srow, "stream = browser handoff");
+
     << Codec registry card (full width): what the UI will and will not offer. >>
     int codec = uiCard(content);
     uiWidgetExpand(codec, 1, 0);
@@ -501,7 +648,8 @@ class MediaBrowser {
         << Menubar top-level buttons toggle their dropdown panels. >>
         if (uiWidgetTakeActivated(menuFileButton) == 1) { openMenu(0); }
         if (uiWidgetTakeActivated(menuViewButton) == 1) { openMenu(1); }
-        if (uiWidgetTakeActivated(menuHelpButton) == 1) { openMenu(2); }
+        if (uiWidgetTakeActivated(menuStreamButton) == 1) { openMenu(2); }
+        if (uiWidgetTakeActivated(menuHelpButton) == 1) { openMenu(3); }
 
         << File menu commands. Open Folder scans the folder named in the
            location bar and switches the gallery to its real images. >>
@@ -523,6 +671,18 @@ class MediaBrowser {
         if (uiWidgetTakeActivated(menuViewGallery) == 1) { setStatus("View - Picture Gallery"); showPicture(); openMenu(-1); }
         if (uiWidgetTakeActivated(menuViewPlayer) == 1) { setStatus("View - Video Player"); openMenu(-1); }
 
+        << Stream (YouTube) menu commands. Load reads the location bar; Open
+           hands the recognized video to the browser; Clear restores the local
+           player. >>
+        if (uiWidgetTakeActivated(menuStreamLoad) == 1) {
+          String url = locationInput >= 0 ? uiWidgetGetText(locationInput) : "";
+          if (url == null) url = "";
+          loadStream(url);
+          openMenu(-1);
+        }
+        if (uiWidgetTakeActivated(menuStreamOpen) == 1) { openStream(); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuStreamClear) == 1) { clearStream(); openMenu(-1); }
+
         << Help menu commands. >>
         if (uiWidgetTakeActivated(menuHelpGuide) == 1) { setStatus("Help - Media Guide: Prev/Next browse, Play/Pause/Stop and the sliders drive playback."); openMenu(-1); }
         if (uiWidgetTakeActivated(menuHelpAbout) == 1) { setStatus("Help - MediaBrowser " + metaVersion + " by " + metaAuthor); openMenu(-1); }
@@ -537,6 +697,9 @@ class MediaBrowser {
         if (uiWidgetTakeActivated(btnPlay) == 1) { playMedia(); }
         if (uiWidgetTakeActivated(btnPause) == 1) { pauseMedia(); }
         if (uiWidgetTakeActivated(btnStop) == 1) { stopMedia(); }
+
+        << Stream handoff button in the player card. >>
+        if (uiWidgetTakeActivated(btnStreamOpen) == 1) { openStream(); }
       }
     }
 
