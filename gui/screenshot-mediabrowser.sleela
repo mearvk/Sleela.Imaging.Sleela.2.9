@@ -62,7 +62,8 @@ class ScreenshotMediaBrowser {
     int header = uiHeaderBar(root);
     int hPrev = uiButton(header, "< Prev"); uiTooltip(hPrev, "Previous picture");
     int hNext = uiButton(header, "Next >"); uiTooltip(hNext, "Next picture");
-    int location = uiEntry(header, "file:///pictures/beach-sunrise.jpg");
+    int location = uiEntry(header, "/home/max/Pictures/beach-sunrise.jpg");
+    uiTooltip(location, "Folder path to scan, or the current file");
     uiWidgetExpand(location, 1, 0);
     uiWidgetMargin(location, 0, 8, 0, 8);
     uiBadge(header, "local - no network");
@@ -74,7 +75,7 @@ class ScreenshotMediaBrowser {
     uiWidgetExpand(content, 1, 1);
 
     uiHeading(content, "SLeeLa Media Browser", 24);
-    uiLabel(content, "Browse pictures and play videos. Local-first; originals are never modified.");
+    uiLabel(content, "Browse pictures and play videos. Type a folder and choose File - Open Folder to load real images. Local-first; originals are never modified.");
 
     int cols = uiBox(content, 1, 16);
     uiWidgetExpand(cols, 1, 1);
@@ -141,7 +142,7 @@ class ScreenshotMediaBrowser {
     uiSpacer(crow);
 
     int status = uiStatusBar(root);
-    int statusLabel = uiLabel(status, "video/mp4 playing (codec gate passed) - browsing beach-sunrise.jpg");
+    int statusLabel = uiLabel(status, "Loaded 5 image(s) from /home/max/Pictures - video/mp4 playing (codec gate passed)");
     uiWidgetMargin(statusLabel, 0, 12, 0, 12);
 
     uiWindowShow(window);

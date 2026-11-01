@@ -15,8 +15,15 @@ not a mockup.*
 
 ## Files
 
-- `MediaBrowser.sleela` — the interactive application. A `MediaBrowser` class
-  that opens a native window and runs an event loop.
+- `MediaBrowser.sleela` — the interactive application. A single, self-contained
+  `MediaBrowser` class that opens a native window and runs an event loop. It
+  inlines the folder-scanner logic because the SLeeLa runtime runs one merged
+  translation unit (the same reason `src/ImagingOrganizer.sleela` inlines its
+  classes).
+- `GalleryScanner.sleela` — the folder scanner kept as a separate, modular class
+  (the same logic that `MediaBrowser` inlines). It mirrors the project's
+  `src/ImagingFileSystem.sleela` provider style and carries the Metadata Class
+  metapattern.
 - `screenshot-mediabrowser.sleela` — a capture driver that builds the identical
   widget tree with pre-filled state and pumps a few non-blocking frames so a
   display-less run can render a real screenshot. Mirrors the repo's
@@ -27,11 +34,19 @@ not a mockup.*
 - **Menu bar**: File (Open Picture / Open Folder / Media Information / Quit),
   View (Picture Gallery / Video Player), and Help (Media Guide / About),
   implemented as a horizontal button strip with collapsible dropdown panels.
-- **Navigation header**: Prev / Next, a location field that tracks the current
-  file, and a `local - no network` badge.
+- **Navigation header**: Prev / Next, a location field that doubles as the
+  folder-path input and tracks the current file, and a `local - no network`
+  badge.
+- **Real on-disk folder browsing**: type a folder path in the location bar and
+  choose **File - Open Folder**. The gallery enumerates the real image files in
+  that directory (jpg/jpeg/png/gif/bmp/webp/tiff/tif, case-insensitive) and
+  pages through them; with no folder loaded it falls back to a built-in demo
+  set. The scan is **read-only** — it lists files, never creates, moves, or
+  deletes media, and never follows symbolic links. It uses the VM `osRun`
+  built-in with fixed POSIX commands and the scalar-field technique of
+  `src/ImagingFileSystem.sleela`.
 - **Picture gallery**: an image canvas with a paging caption and Previous /
-  Next controls that cycle a small demo set; the location bar updates as you
-  browse.
+  Next controls; the location bar updates to the current file as you browse.
 - **Video player**: a video canvas with full, **live** transport — Play /
   Pause / Stop, a seek slider that drives the position readout and the playback
   level bar, and a volume slider with a live `volume NN%` readout.

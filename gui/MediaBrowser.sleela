@@ -1,10 +1,17 @@
 << MediaBrowser — native SleelaUI media browser for SLeeLa Imaging 2.9.
 
    A standalone desktop GUI that browses pictures and plays videos. It is a
-   general media application shell with a File menu, a picture gallery, a video
-   canvas with full, live transport controls (play / pause / stop, a seek slider
-   that drives the position readout, and a volume slider with a live readout),
-   and a codec-aware registry so the UI only offers media it can actually play.
+   general media application shell with a File menu, a picture gallery that can
+   load the real image files of an on-disk folder, a video canvas with full,
+   live transport controls (play / pause / stop, a seek slider that drives the
+   position readout, and a volume slider with a live readout), and a codec-aware
+   registry so the UI only offers media it can actually play.
+
+   Real-folder browsing is provided by the sibling GalleryScanner class, which
+   enumerates a directory read-only through the VM osRun built-in using the same
+   fixed-POSIX, scalar-field technique as the project's ImagingFileSystem
+   provider. Type a folder path in the location bar and choose File - Open
+   Folder; with no folder loaded the gallery pages a small built-in demo set.
 
    Look and feel deliberately match the SleelaUI house style used by the
    project's other windows and by the reference gui-dual-media-studio demo:
@@ -51,9 +58,18 @@ class MediaBrowser {
   int menuHelpButton = -1; int menuHelpPanel = -1;
   int menuHelpGuide = -1; int menuHelpAbout = -1;
 
-  << Picture gallery state: a small fixed demo set the browser pages through. >>
+  << Picture gallery state. When no on-disk folder is loaded the browser pages
+     through a small fixed demo set; a real-folder scan (inlined below, the same
+     logic as the sibling GalleryScanner modular class) replaces it with the
+     actual image files of a chosen folder. >>
   int galleryIndex = 0;
+  int demoCount = 5;
   int galleryCount = 5;
+  boolean folderLoaded = false;
+  String folderPath = "";
+  << Per-run work area for the read-only folder scan. >>
+  String scanDir = "";
+  int scanCount = 0;
 
   << Player transport state kept in SLeeLa; the toolkit renders it. The codec
      gate decides, once, whether the player may run at all. >>
@@ -64,7 +80,7 @@ class MediaBrowser {
   int lastPos = 0;
 
   << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
-  String metaVersion = "1.1.0";
+  String metaVersion = "1.2.0";
   int metaId = 2911;
   String metaAuthor = "Max Rupplin / MEARVK LLC";
   String metaDate = "2026-11-01";
@@ -93,13 +109,116 @@ class MediaBrowser {
       mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav";
   }
 
-  << The demo picture names paged through by the gallery. >>
-  String pictureName(int i) {
+  << ---- Inlined read-only folder scanner (mirrors gui/GalleryScanner.sleela).
+     Enumerates image files in one directory via the VM osRun built-in using the
+     fixed-POSIX, scalar-field technique of the project's ImagingFileSystem
+     provider: results are written WITHOUT a trailing newline to per-record field
+     files and read back by index. The scan never creates, moves, or deletes
+     media, and never follows symbolic links (find -P ... ! -type l). ---- >>
+
+  << Quote a path for a double-quoted argument inside the single-quoted sh
+     command. The folder is validated (osIsDir) before any command runs. >>
+  String q(String path) { return "\"" + path + "\""; }
+
+  << Read one scalar field file produced by the shell (no trailing newline). >>
+  String readField(String path) {
+    int h = openFile(path, "r");
+    if (h < 0) return "";
+    String s = read(h);
+    close(h);
+    return s;
+  }
+
+  << Scan one directory (non-recursive) for allow-listed image files. On success
+     sets scanDir + scanCount and returns the count; returns 0 on any failure or
+     empty folder. >>
+  int scanFolder(String folder) {
+    scanCount = 0;
+    if (folder == "") return 0;
+    if (osIsDir(folder) != 1) return 0;
+    String base = osTempDir() + "/sleela-gallery";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-gallery-work"; osMakeDir(base); }
+    scanDir = base + "/run-" + timeUtcMillis();
+    osMakeDir(scanDir);
+    if (osIsDir(scanDir) != 1) return 0;
+    String list = scanDir + "/list.txt";
+    << Enumerate basenames of image files, symlinks excluded, sorted for a
+       stable order. Any error collapses to a stable empty list. >>
+    osRun("sh -c 'cd " + q(folder) + " 2>/dev/null && ls -1 2>/dev/null "
+      + "| grep -iE \"[.](jpg|jpeg|png|gif|bmp|webp|tiff|tif)$\" "
+      + "| sort > " + q(list) + " || : > " + q(list) + "'");
+    << For each basename emit k.name (basename) and k.path (absolute path). >>
+    String wd = scanDir;
+    osRun("sh -c '"
+      + "k=0; f=" + q(folder) + "; "
+      + "while IFS= read -r b; do "
+      + "printf \"%s\" \"$b\" > \"" + wd + "/$k.name\"; "
+      + "printf \"%s/%s\" \"$f\" \"$b\" > \"" + wd + "/$k.path\"; "
+      + "k=$((k+1)); done < " + q(list) + "; "
+      + "printf \"%s\" \"$k\" > \"" + wd + "/count.txt\""
+      + "'");
+    int k = 0;
+    while (k < 100000 && osExists(scanDir + "/" + k + ".name") == 1) { k = k + 1; }
+    scanCount = k;
+    return scanCount;
+  }
+
+  String scanNameAt(int i) {
+    if (i < 0 || i >= scanCount) return "";
+    return readField(scanDir + "/" + i + ".name");
+  }
+  String scanPathAt(int i) {
+    if (i < 0 || i >= scanCount) return "";
+    return readField(scanDir + "/" + i + ".path");
+  }
+
+  << Name of the current gallery entry: a real file when a folder is loaded,
+     otherwise one of the built-in demo names. >>
+  String demoName(int i) {
     if (i == 0) return "beach-sunrise.jpg";
     if (i == 1) return "mountain-trail.png";
     if (i == 2) return "city-lights.jpg";
     if (i == 3) return "forest-path.gif";
     return "harbor-dusk.jpg";
+  }
+  String pictureName(int i) {
+    if (folderLoaded) {
+      String nm = scanNameAt(i);
+      if (nm != "") return nm;
+    }
+    return demoName(i);
+  }
+  << Absolute (or demo) path shown in the location bar for the current entry. >>
+  String picturePath(int i) {
+    if (folderLoaded) {
+      String p = scanPathAt(i);
+      if (p != "") return p;
+    }
+    return "file:///pictures/" + demoName(i);
+  }
+
+  << Load a real on-disk folder into the gallery. Reads the path from the
+     location bar, scans it read-only, and switches the gallery over to the real
+     files. Falls back to the demo set when the path is invalid or has no
+     images. >>
+  void loadFolder(String path) {
+    if (path == "") { setStatus("Open Folder: enter a folder path in the location bar first."); return; }
+    int found = scanFolder(path);
+    if (found > 0) {
+      folderLoaded = true;
+      folderPath = path;
+      galleryCount = found;
+      galleryIndex = 0;
+      showPicture();
+      setStatus("Loaded " + intToStr(found) + " image(s) from " + path);
+    } else {
+      folderLoaded = false;
+      galleryCount = demoCount;
+      galleryIndex = 0;
+      showPicture();
+      setStatus("No images found in " + path + " - showing the built-in demo set.");
+    }
   }
 
   << A glass media theme shared with the project's other SleelaUI windows. >>
@@ -140,12 +259,13 @@ class MediaBrowser {
      bar for the current index. >>
   void showPicture() {
     String name = pictureName(galleryIndex);
+    String src = folderLoaded ? "folder" : "demo";
     if (galleryCaption >= 0) {
       uiWidgetSetText(galleryCaption, "picture " + intToStr(galleryIndex + 1) + " / " +
         intToStr(galleryCount) + "   -   " + name);
     }
-    if (locationInput >= 0) uiWidgetSetText(locationInput, "file:///pictures/" + name);
-    setStatus("Browsing " + name + " (image, codec gate passed)");
+    if (locationInput >= 0) uiWidgetSetText(locationInput, picturePath(galleryIndex));
+    setStatus("Browsing " + name + " (" + src + " image, codec gate passed)");
   }
 
   void nextPicture() {
@@ -280,7 +400,8 @@ class MediaBrowser {
     int header = uiHeaderBar(root);
     btnPrev = uiButton(header, "< Prev"); uiTooltip(btnPrev, "Previous picture");
     btnNext = uiButton(header, "Next >"); uiTooltip(btnNext, "Next picture");
-    locationInput = uiEntry(header, "file:///pictures/");
+    locationInput = uiEntry(header, "/path/to/pictures");
+    uiTooltip(locationInput, "Folder path to scan, or the current file");
     uiWidgetExpand(locationInput, 1, 0);
     uiWidgetMargin(locationInput, 0, 8, 0, 8);
     uiBadge(header, "local - no network");
@@ -293,7 +414,7 @@ class MediaBrowser {
     uiWidgetExpand(content, 1, 1);
 
     uiHeading(content, "SLeeLa Media Browser", 24);
-    uiLabel(content, "Browse pictures and play videos. Local-first; originals are never modified.");
+    uiLabel(content, "Browse pictures and play videos. Type a folder in the location bar and choose File - Open Folder to load real images. Local-first; originals are never modified.");
 
     << Two-column layout: picture gallery on the left, video player on the right. >>
     int cols = uiBox(content, 1, 16);
@@ -382,10 +503,20 @@ class MediaBrowser {
         if (uiWidgetTakeActivated(menuViewButton) == 1) { openMenu(1); }
         if (uiWidgetTakeActivated(menuHelpButton) == 1) { openMenu(2); }
 
-        << File menu commands. >>
-        if (uiWidgetTakeActivated(menuFileOpen) == 1) { setStatus("File - Open Picture..."); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuFileOpenFolder) == 1) { setStatus("File - Open Folder..."); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuFileInfo) == 1) { setStatus("File - Media Information - " + pictureName(galleryIndex)); openMenu(-1); }
+        << File menu commands. Open Folder scans the folder named in the
+           location bar and switches the gallery to its real images. >>
+        if (uiWidgetTakeActivated(menuFileOpen) == 1) { setStatus("File - Open Picture: type a folder path in the location bar, then Open Folder."); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuFileOpenFolder) == 1) {
+          String path = locationInput >= 0 ? uiWidgetGetText(locationInput) : "";
+          if (path == null) path = "";
+          loadFolder(path);
+          openMenu(-1);
+        }
+        if (uiWidgetTakeActivated(menuFileInfo) == 1) {
+          String where = folderLoaded ? ("folder " + folderPath) : "built-in demo set";
+          setStatus("File - Media Information - " + pictureName(galleryIndex) + " (" + where + ", " + intToStr(galleryCount) + " item(s))");
+          openMenu(-1);
+        }
         if (uiWidgetTakeActivated(menuFileQuit) == 1) { openMenu(-1); running = false; uiAppQuit(app, 0); }
 
         << View menu commands. >>
