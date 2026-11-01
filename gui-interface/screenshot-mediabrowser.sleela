@@ -1,6 +1,6 @@
-<< screenshot-mediabrowser — headless capture driver for gui/MediaBrowser.
+<< screenshot-mediabrowser — headless capture driver for gui-interface/MediaBrowser.
 
-   Builds the exact same SleelaUI widget tree as gui/MediaBrowser.sleela, with
+   Builds the exact same SleelaUI widget tree as gui-interface/MediaBrowser.sleela, with
    pre-filled example state, and pumps a few NON-blocking frames so the layout
    settles and the SleelaUI software rasterizer paints a full canvas. With the
    one-time SLEELA_UI_DUMP capture hook in the toolkit (see docs/SCREENSHOT.md)
@@ -12,9 +12,9 @@
    a fixed number of frames.
 
    Reproduce (headless-backend compiler):
-     SLEELA_UI_DUMP=gui/mediabrowser.ppm SLEELA_HOME=/path/to/SLeeLa \
-       /path/to/SLeeLa/impl/build/sleela run gui/screenshot-mediabrowser.sleela
-     python3 tests/ppm_to_png.py gui/mediabrowser.ppm docs/images/media-browser.png >>
+     SLEELA_UI_DUMP=gui-interface/mediabrowser.ppm SLEELA_HOME=/path/to/SLeeLa \
+       /path/to/SLeeLa/impl/build/sleela run gui-interface/screenshot-mediabrowser.sleela
+     python3 tests/ppm_to_png.py gui-interface/mediabrowser.ppm docs/images/media-browser.png >>
 #sleela 2.9
 material;
 class ScreenshotMediaBrowser {

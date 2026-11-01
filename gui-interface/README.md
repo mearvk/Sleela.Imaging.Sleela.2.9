@@ -1,4 +1,4 @@
-# gui — SLeeLa Media Browser
+# gui-interface — SLeeLa Media Browser
 
 A standalone native SleelaUI desktop application for **browsing pictures and
 playing videos**, written in SLeeLa (syntax 2.9) and driven by the SLeeLa VM's
@@ -73,7 +73,7 @@ Requires the source-built `sleela` compiler (syntax 2.9) from
 
 ```sh
 SLEELA=/path/to/SLeeLa
-SLEELA_HOME=$SLEELA $SLEELA/impl/build/sleela run gui/MediaBrowser.sleela
+SLEELA_HOME=$SLEELA $SLEELA/impl/build/sleela run gui-interface/MediaBrowser.sleela
 ```
 
 ## Reproduce the screenshot (headless)
@@ -84,7 +84,7 @@ using the one-time `SLEELA_UI_DUMP` capture hook described in
 headless SleelaUI backend, then:
 
 ```sh
-SLEELA_UI_DUMP=gui/mediabrowser.ppm SLEELA_HOME=$SLEELA \
-  $SLEELA/impl/build/sleela run gui/screenshot-mediabrowser.sleela
-python3 tests/ppm_to_png.py gui/mediabrowser.ppm docs/images/media-browser.png
+SLEELA_UI_DUMP=gui-interface/mediabrowser.ppm SLEELA_HOME=$SLEELA \
+  $SLEELA/impl/build/sleela run gui-interface/screenshot-mediabrowser.sleela
+python3 tests/ppm_to_png.py gui-interface/mediabrowser.ppm docs/images/media-browser.png
 ```
