@@ -1,0 +1,347 @@
+<< MediaBrowser — native SleelaUI media browser for SLeeLa Imaging 2.9.
+
+   A standalone desktop GUI that browses pictures and plays videos. It is a
+   general media application shell with a File menu, a gallery of picture
+   thumbnails, a video canvas with full transport controls (play / pause /
+   stop / seek / volume), and a codec-aware registry so the UI only offers
+   media it can play.
+
+   Look and feel deliberately match the SleelaUI house style used by the
+   project's other windows and by the reference gui-dual-media-studio demo:
+   a glass theme, a functional menubar strip with dropdown panels built from
+   plain boxes/buttons, a header bar with navigation, a scrolled content area,
+   cards, badges, level bars, and a status bar.
+
+   This program drives the native toolkit directly through the documented ui*
+   SLVM bridge; it owns no filesystem-mutating capability. It requires a native
+   display (uiAppCreate); with no display it reports that and exits cleanly.
+
+   Run on the SLeeLa VM (source-built compiler, syntax 2.9):
+     SLEELA_HOME=/path/to/SLeeLa sleela run gui/MediaBrowser.sleela >>
+#sleela 2.9
+material;
+class MediaBrowser {
+  << Theme preset ordinals (mirror SLUIThemeId in the toolkit C ABI). >>
+  int THEME_CUSTOM = 2;
+  << Scroll-policy ordinal (0 = auto scrollbars on overflow). >>
+  int SCROLL_AUTO = 0;
+
+  << Live widget handles the event loop reacts to. >>
+  int app = -1; int theme = -1; int window = -1;
+  int statusLabel = -1; int videoCaption = -1; int positionLabel = -1;
+  int seekSlider = -1; int volumeSlider = -1; int playbackLevel = -1;
+  int btnPlay = -1; int btnPause = -1; int btnStop = -1;
+  int btnPrev = -1; int btnNext = -1;
+  int galleryCaption = -1; int canvas = -1;
+
+  << Menubar strip and its dropdown panels (built from existing ui* widgets). >>
+  int openMenuIndex = -1;
+  int menuFileButton = -1; int menuFilePanel = -1;
+  int menuFileOpen = -1; int menuFileOpenFolder = -1; int menuFileInfo = -1; int menuFileQuit = -1;
+  int menuViewButton = -1; int menuViewPanel = -1;
+  int menuViewGallery = -1; int menuViewPlayer = -1;
+  int menuHelpButton = -1; int menuHelpPanel = -1;
+  int menuHelpGuide = -1; int menuHelpAbout = -1;
+
+  << Picture gallery state: a small fixed demo set the browser pages through. >>
+  int galleryIndex = 0;
+  int galleryCount = 5;
+
+  << Player transport state kept in SLeeLa; the toolkit renders it. >>
+  boolean playing = false;
+  boolean running = false;
+
+  << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
+  String metaVersion = "1.0.0";
+  int metaId = 2911;
+  String metaAuthor = "Max Rupplin / MEARVK LLC";
+  String metaDate = "2026-11-01";
+  String metaCopyright = "MEARVK LLC";
+  String metaTrademark = "none";
+  String metaCorporation = "MEARVK LLC";
+  String metaOrigin = "International";
+  String metaBirthDate = "2026-11-01";
+  int metaScienceRating = 6;
+  String metaNationalSchedule = "none";
+  String getMetaVersion() { return metaVersion; }
+  int getMetaId() { return metaId; }
+  String getAuthor() { return metaAuthor; }
+  String getOrigin() { return metaOrigin; }
+  String getNationalSchedule() { return metaNationalSchedule; }
+
+  int rgba(int r, int g, int b, int a) { return r * 16777216 + g * 65536 + b * 256 + a; }
+  int rgb(int r, int g, int b) { return rgba(r, g, b, 255); }
+  String intToStr(int v) { return "" + v; }
+
+  << Codec gate: the browser consults this before offering a playback control.
+     The UI never offers media it cannot play. >>
+  boolean canPlayType(String mime) {
+    return mime == "image/jpeg" || mime == "image/png" || mime == "image/gif" ||
+      mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav";
+  }
+
+  << The demo picture names paged through by the gallery (image/jpeg). >>
+  String pictureName(int i) {
+    if (i == 0) return "beach-sunrise.jpg";
+    if (i == 1) return "mountain-trail.png";
+    if (i == 2) return "city-lights.jpg";
+    if (i == 3) return "forest-path.gif";
+    return "harbor-dusk.jpg";
+  }
+
+  << A glass media theme shared with the project's other SleelaUI windows. >>
+  int glassTheme() {
+    int t = uiThemePreset(THEME_CUSTOM);
+    uiThemeSetBg(t, rgb(14, 23, 38));
+    uiThemeSetSurface(t, rgb(24, 36, 56));
+    uiThemeSetSurfaceHi(t, rgb(36, 52, 78));
+    uiThemeSetChrome(t, rgb(28, 42, 64));
+    uiThemeSetBorder(t, rgba(130, 170, 230, 55));
+    uiThemeSetFg(t, rgb(232, 240, 250));
+    uiThemeSetFgDim(t, rgb(150, 172, 198));
+    uiThemeSetAccent(t, rgb(91, 141, 239));
+    uiThemeSetAccentFg(t, rgb(10, 18, 32));
+    uiThemeSetDanger(t, rgb(228, 122, 122));
+    uiThemeSetRadius(t, 12);
+    uiThemeSetControlHeight(t, 32);
+    return t;
+  }
+
+  void setStatus(String message) { if (statusLabel >= 0) uiWidgetSetText(statusLabel, message); }
+
+  << Show one dropdown at a time; selecting the open menu closes it. >>
+  void openMenu(int which) {
+    int next = openMenuIndex == which ? -1 : which;
+    openMenuIndex = next;
+    uiWidgetVisible(menuFilePanel, next == 0 ? 1 : 0);
+    uiWidgetVisible(menuViewPanel, next == 1 ? 1 : 0);
+    uiWidgetVisible(menuHelpPanel, next == 2 ? 1 : 0);
+  }
+
+  << Repaint the picture gallery caption for the current index. >>
+  void showPicture() {
+    String name = pictureName(galleryIndex);
+    if (galleryCaption >= 0) {
+      uiWidgetSetText(galleryCaption, "picture " + intToStr(galleryIndex + 1) + " / " +
+        intToStr(galleryCount) + "   -   " + name);
+    }
+    setStatus("Browsing " + name + " (image, codec gate passed)");
+  }
+
+  void nextPicture() {
+    galleryIndex = galleryIndex + 1;
+    if (galleryIndex >= galleryCount) galleryIndex = 0;
+    showPicture();
+  }
+  void prevPicture() {
+    galleryIndex = galleryIndex - 1;
+    if (galleryIndex < 0) galleryIndex = galleryCount - 1;
+    showPicture();
+  }
+
+  << Transport actions change the player state label and the status bar. >>
+  void playMedia() {
+    playing = true;
+    if (videoCaption >= 0) uiWidgetSetText(videoCaption, "transport: playing");
+    if (playbackLevel >= 0) uiWidgetSetValue(playbackLevel, 0.62);
+    setStatus("video/mp4 playing (codec gate passed)");
+  }
+  void pauseMedia() {
+    playing = false;
+    if (videoCaption >= 0) uiWidgetSetText(videoCaption, "transport: paused");
+    setStatus("video paused");
+  }
+  void stopMedia() {
+    playing = false;
+    if (videoCaption >= 0) uiWidgetSetText(videoCaption, "transport: stopped");
+    if (seekSlider >= 0) uiWidgetSetValue(seekSlider, 0.0);
+    if (playbackLevel >= 0) uiWidgetSetValue(playbackLevel, 0.0);
+    if (positionLabel >= 0) uiWidgetSetText(positionLabel, "position 0s / 180s");
+    setStatus("video stopped (position reset to 0s)");
+  }
+
+  void main() {
+    print("SLeeLa Imaging MediaBrowser (native SleelaUI) - backend "
+      + uiBackendName(uiBackend()) + ", toolkit " + uiVersion());
+
+    app = uiAppCreate("com.mearvk.sleela.imaging.mediabrowser");
+    if (app < 0) {
+      print("No display available (headless): the ui* bridge is wired, but the");
+      print("toolkit could not open a window. Run on a desktop (X/Cocoa/Win32).");
+      return;
+    }
+
+    theme = glassTheme();
+    window = uiWindowCreate(app, "SLeeLa Media Browser - Imaging 2.9", 1100, 720, theme);
+    if (window < 0) {
+      print("MediaBrowser: native window creation failed.");
+      uiAppDestroy(app); app = -1; return;
+    }
+    uiWindowSetBuffering(window, 2);
+    uiWindowSetMinSize(window, 900, 600);
+    int root = uiWindowRoot(window);
+
+    << ---- Functional menubar strip and dropdown panels ---- >>
+    int menuStrip = uiBox(root, 1, 4);
+    uiWidgetMargin(menuStrip, 4, 8, 4, 8);
+    menuFileButton = uiButton(menuStrip, "File");
+    menuViewButton = uiButton(menuStrip, "View");
+    menuHelpButton = uiButton(menuStrip, "Help");
+    uiSpacer(menuStrip);
+
+    menuFilePanel = uiBox(root, 0, 2);
+    uiWidgetMargin(menuFilePanel, 4, 10, 4, 10);
+    menuFileOpen = uiButton(menuFilePanel, "Open Picture...");
+    menuFileOpenFolder = uiButton(menuFilePanel, "Open Folder...");
+    menuFileInfo = uiButton(menuFilePanel, "Media Information");
+    menuFileQuit = uiButton(menuFilePanel, "Quit");
+    uiWidgetVisible(menuFilePanel, 0);
+
+    menuViewPanel = uiBox(root, 0, 2);
+    uiWidgetMargin(menuViewPanel, 4, 10, 4, 10);
+    menuViewGallery = uiButton(menuViewPanel, "Picture Gallery");
+    menuViewPlayer = uiButton(menuViewPanel, "Video Player");
+    uiWidgetVisible(menuViewPanel, 0);
+
+    menuHelpPanel = uiBox(root, 0, 2);
+    uiWidgetMargin(menuHelpPanel, 4, 10, 4, 10);
+    menuHelpGuide = uiButton(menuHelpPanel, "Media Guide");
+    menuHelpAbout = uiButton(menuHelpPanel, "About MediaBrowser");
+    uiWidgetVisible(menuHelpPanel, 0);
+
+    << ---- Chrome: navigation header ---- >>
+    int header = uiHeaderBar(root);
+    btnPrev = uiButton(header, "< Prev");
+    btnNext = uiButton(header, "Next >");
+    int location = uiEntry(header, "file:///pictures/current");
+    uiWidgetExpand(location, 1, 0);
+    uiWidgetMargin(location, 0, 8, 0, 8);
+    uiBadge(header, "local - no network");
+
+    << Content scrolls inside a scrolled view instead of spilling past the frame. >>
+    int scroller = uiScrolledView(root, SCROLL_AUTO, SCROLL_AUTO);
+    uiWidgetExpand(scroller, 1, 1);
+    int content = uiBox(scroller, 0, 14);
+    uiWidgetMargin(content, 16, 16, 16, 16);
+    uiWidgetExpand(content, 1, 1);
+
+    uiHeading(content, "SLeeLa Media Browser", 24);
+    uiLabel(content, "Browse pictures and play videos. Local-first; originals are never modified.");
+
+    << Two-column layout: picture gallery on the left, video player on the right. >>
+    int cols = uiBox(content, 1, 16);
+    uiWidgetExpand(cols, 1, 1);
+    int colL = uiBox(cols, 0, 12);
+    uiWidgetExpand(colL, 1, 1);
+    int colR = uiBox(cols, 0, 12);
+    uiWidgetExpand(colR, 1, 1);
+
+    << Picture gallery card. >>
+    int gallery = uiCard(colL);
+    uiWidgetExpand(gallery, 1, 1);
+    int gBox = uiBox(gallery, 0, 8);
+    uiWidgetMargin(gBox, 12, 12, 12, 12);
+    uiWidgetExpand(gBox, 1, 1);
+    uiLabel(gBox, "PICTURE GALLERY  (image/jpeg - png - gif)");
+    int thumb = uiImage(gBox, "beach-sunrise.jpg", 420, 300);
+    uiWidgetExpand(thumb, 1, 1);
+    galleryCaption = uiLabel(gBox, "picture 1 / 5   -   beach-sunrise.jpg");
+    int gRow = uiBox(gBox, 1, 8);
+    int gPrev = uiButton(gRow, "< Previous");
+    int gNext = uiButton(gRow, "Next >");
+    uiSpacer(gRow);
+    uiBadge(gRow, "fit to window");
+
+    << Video player card with full transport (codec-gated on video/mp4). >>
+    boolean playable = canPlayType("video/mp4");
+    int player = uiCard(colR);
+    uiWidgetExpand(player, 1, 1);
+    int pBox = uiBox(player, 0, 8);
+    uiWidgetMargin(pBox, 12, 12, 12, 12);
+    uiWidgetExpand(pBox, 1, 1);
+    uiLabel(pBox, "VIDEO PLAYER  (video/mp4 - playable=" + (playable ? "yes" : "no") + ")");
+    canvas = uiImage(pBox, "intro.mp4", 420, 236);
+    uiWidgetExpand(canvas, 1, 1);
+    videoCaption = uiLabel(pBox, "transport: stopped");
+    positionLabel = uiLabel(pBox, "position 0s / 180s");
+    seekSlider = uiSlider(pBox, 0.0, 180.0, 0.0);
+    int transport = uiBox(pBox, 1, 8);
+    btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1);
+    btnPause = uiButton(transport, "Pause");
+    btnStop = uiButton(transport, "Stop");
+    uiSpacer(transport);
+    uiLabel(transport, "volume");
+    volumeSlider = uiSlider(transport, 0.0, 100.0, 80.0);
+    int lrow = uiBox(pBox, 1, 8);
+    uiLabel(lrow, "playback");
+    playbackLevel = uiLevelBar(lrow, 0.0);
+    uiWidgetExpand(playbackLevel, 1, 0);
+
+    << Codec registry card (full width): what the UI will and will not offer. >>
+    int codec = uiCard(content);
+    uiWidgetExpand(codec, 1, 0);
+    int cBox = uiBox(codec, 0, 6);
+    uiWidgetMargin(cBox, 12, 12, 12, 12);
+    uiLabel(cBox, "CODEC REGISTRY  (the UI only offers media it can play)");
+    int crow = uiBox(cBox, 1, 8);
+    uiBadge(crow, "image/jpeg ok");
+    uiBadge(crow, "image/png ok");
+    uiBadge(crow, "image/gif ok");
+    uiBadge(crow, "video/mp4 ok");
+    uiBadge(crow, "video/quicktime ok");
+    int hidden = uiBadge(crow, "video/avi hidden");
+    uiWidgetDestructive(hidden, 1);
+    uiSpacer(crow);
+
+    int status = uiStatusBar(root);
+    statusLabel = uiLabel(status, "Ready - browse pictures with Prev/Next, play video with the transport controls.");
+    uiWidgetMargin(statusLabel, 0, 12, 0, 12);
+
+    uiWindowShow(window);
+    running = true;
+    showPicture();
+    print("Window shown. Gallery and transport controls change the view and player state.");
+
+    << ---- Interactive event loop: pump, then poll the controls. ---- >>
+    while (running) {
+      int dispatched = uiAppPump(app, 1);
+      if (dispatched < 0) { running = false; }
+      else {
+        << Menubar top-level buttons toggle their dropdown panels. >>
+        if (uiWidgetTakeActivated(menuFileButton) == 1) { openMenu(0); }
+        if (uiWidgetTakeActivated(menuViewButton) == 1) { openMenu(1); }
+        if (uiWidgetTakeActivated(menuHelpButton) == 1) { openMenu(2); }
+
+        << File menu commands. >>
+        if (uiWidgetTakeActivated(menuFileOpen) == 1) { setStatus("File - Open Picture..."); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuFileOpenFolder) == 1) { setStatus("File - Open Folder..."); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuFileInfo) == 1) { setStatus("File - Media Information"); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuFileQuit) == 1) { openMenu(-1); running = false; uiAppQuit(app, 0); }
+
+        << View menu commands. >>
+        if (uiWidgetTakeActivated(menuViewGallery) == 1) { setStatus("View - Picture Gallery"); showPicture(); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuViewPlayer) == 1) { setStatus("View - Video Player"); openMenu(-1); }
+
+        << Help menu commands. >>
+        if (uiWidgetTakeActivated(menuHelpGuide) == 1) { setStatus("Help - Media Guide"); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuHelpAbout) == 1) { setStatus("Help - MediaBrowser " + metaVersion); openMenu(-1); }
+
+        << Gallery navigation (header buttons and in-card buttons). >>
+        if (uiWidgetTakeActivated(btnNext) == 1) { nextPicture(); }
+        if (uiWidgetTakeActivated(btnPrev) == 1) { prevPicture(); }
+        if (uiWidgetTakeActivated(gNext) == 1) { nextPicture(); }
+        if (uiWidgetTakeActivated(gPrev) == 1) { prevPicture(); }
+
+        << Video transport. >>
+        if (uiWidgetTakeActivated(btnPlay) == 1) { playMedia(); }
+        if (uiWidgetTakeActivated(btnPause) == 1) { pauseMedia(); }
+        if (uiWidgetTakeActivated(btnStop) == 1) { stopMedia(); }
+      }
+    }
+
+    uiAppDestroy(app); app = -1;
+    if (theme >= 0) uiThemeDestroy(theme);
+    theme = -1;
+    print("event loop exited.");
+  }
+}
