@@ -7,7 +7,7 @@ the usual media controls, and it matches the look and feel of the project's
 other SleelaUI windows (`src/ui/ImagingWindow.sleela`) and the reference
 `gui-dual-media-studio` demo in the SLeeLa toolkit.
 
-![SLeeLa Media Browser window](../docs/images/media-browser.png)
+![SLeeLa Media Browser window](media-browser.png)
 
 *A real render of `MediaBrowser.sleela` by the SleelaUI software rasterizer with
 no display server — produced headlessly from `screenshot-mediabrowser.sleela`,
