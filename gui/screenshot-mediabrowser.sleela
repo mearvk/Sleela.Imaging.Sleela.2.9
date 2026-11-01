@@ -60,9 +60,9 @@ class ScreenshotMediaBrowser {
 
     << Navigation header. >>
     int header = uiHeaderBar(root);
-    uiButton(header, "< Prev");
-    uiButton(header, "Next >");
-    int location = uiEntry(header, "file:///pictures/current");
+    int hPrev = uiButton(header, "< Prev"); uiTooltip(hPrev, "Previous picture");
+    int hNext = uiButton(header, "Next >"); uiTooltip(hNext, "Next picture");
+    int location = uiEntry(header, "file:///pictures/beach-sunrise.jpg");
     uiWidgetExpand(location, 1, 0);
     uiWidgetMargin(location, 0, 8, 0, 8);
     uiBadge(header, "local - no network");
@@ -110,17 +110,18 @@ class ScreenshotMediaBrowser {
     uiWidgetExpand(canvas, 1, 1);
     uiLabel(pBox, "transport: playing");
     uiLabel(pBox, "position 72s / 180s");
-    uiSlider(pBox, 0.0, 180.0, 72.0);
+    int seek = uiSlider(pBox, 0.0, 180.0, 72.0); uiTooltip(seek, "Seek position");
     int transport = uiBox(pBox, 1, 8);
-    int btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1);
+    << Playing state: Play is disabled, Pause and Stop are enabled. >>
+    int btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1); uiWidgetSensitive(btnPlay, 0);
     uiButton(transport, "Pause");
     uiButton(transport, "Stop");
     uiSpacer(transport);
-    uiLabel(transport, "volume");
-    uiSlider(transport, 0.0, 100.0, 80.0);
+    uiLabel(transport, "volume 80%");
+    int vol = uiSlider(transport, 0.0, 100.0, 80.0); uiTooltip(vol, "Volume");
     int lrow = uiBox(pBox, 1, 8);
     uiLabel(lrow, "playback");
-    int lvl = uiLevelBar(lrow, 0.62);
+    int lvl = uiLevelBar(lrow, 0.40);
     uiWidgetExpand(lvl, 1, 0);
 
     << Codec registry card. >>

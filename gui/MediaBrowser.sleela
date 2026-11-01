@@ -1,16 +1,22 @@
 << MediaBrowser — native SleelaUI media browser for SLeeLa Imaging 2.9.
 
    A standalone desktop GUI that browses pictures and plays videos. It is a
-   general media application shell with a File menu, a gallery of picture
-   thumbnails, a video canvas with full transport controls (play / pause /
-   stop / seek / volume), and a codec-aware registry so the UI only offers
-   media it can play.
+   general media application shell with a File menu, a picture gallery, a video
+   canvas with full, live transport controls (play / pause / stop, a seek slider
+   that drives the position readout, and a volume slider with a live readout),
+   and a codec-aware registry so the UI only offers media it can actually play.
 
    Look and feel deliberately match the SleelaUI house style used by the
    project's other windows and by the reference gui-dual-media-studio demo:
    a glass theme, a functional menubar strip with dropdown panels built from
    plain boxes/buttons, a header bar with navigation, a scrolled content area,
-   cards, badges, level bars, and a status bar.
+   cards, badges, a level bar, and a status bar.
+
+   Tightening pass: transport state is centralized in one syncTransport() so the
+   caption, level bar, enabled controls, and status line never drift apart; the
+   seek and volume sliders are read live each frame; controls that do not apply
+   in the current state are disabled; and if the player codec is unavailable the
+   whole transport is gated off rather than merely labelled.
 
    This program drives the native toolkit directly through the documented ui*
    SLVM bridge; it owns no filesystem-mutating capability. It requires a native
@@ -21,18 +27,20 @@
 #sleela 2.9
 material;
 class MediaBrowser {
-  << Theme preset ordinals (mirror SLUIThemeId in the toolkit C ABI). >>
+  << Theme preset ordinal (mirror SLUIThemeId in the toolkit C ABI). >>
   int THEME_CUSTOM = 2;
   << Scroll-policy ordinal (0 = auto scrollbars on overflow). >>
   int SCROLL_AUTO = 0;
+  << Video clip length in whole seconds, used to format the position readout. >>
+  int clipSeconds = 180;
 
   << Live widget handles the event loop reacts to. >>
   int app = -1; int theme = -1; int window = -1;
-  int statusLabel = -1; int videoCaption = -1; int positionLabel = -1;
+  int statusLabel = -1; int locationInput = -1;
+  int videoCaption = -1; int positionLabel = -1; int volumeLabel = -1;
   int seekSlider = -1; int volumeSlider = -1; int playbackLevel = -1;
   int btnPlay = -1; int btnPause = -1; int btnStop = -1;
-  int btnPrev = -1; int btnNext = -1;
-  int galleryCaption = -1; int canvas = -1;
+  int btnPrev = -1; int btnNext = -1; int galleryCaption = -1;
 
   << Menubar strip and its dropdown panels (built from existing ui* widgets). >>
   int openMenuIndex = -1;
@@ -47,12 +55,16 @@ class MediaBrowser {
   int galleryIndex = 0;
   int galleryCount = 5;
 
-  << Player transport state kept in SLeeLa; the toolkit renders it. >>
+  << Player transport state kept in SLeeLa; the toolkit renders it. The codec
+     gate decides, once, whether the player may run at all. >>
+  boolean playable = false;
   boolean playing = false;
   boolean running = false;
+  << Last seek position read from the slider, in whole seconds. >>
+  int lastPos = 0;
 
   << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
-  String metaVersion = "1.0.0";
+  String metaVersion = "1.1.0";
   int metaId = 2911;
   String metaAuthor = "Max Rupplin / MEARVK LLC";
   String metaDate = "2026-11-01";
@@ -72,6 +84,7 @@ class MediaBrowser {
   int rgba(int r, int g, int b, int a) { return r * 16777216 + g * 65536 + b * 256 + a; }
   int rgb(int r, int g, int b) { return rgba(r, g, b, 255); }
   String intToStr(int v) { return "" + v; }
+  int clampInt(int v, int lo, int hi) { if (v < lo) return lo; if (v > hi) return hi; return v; }
 
   << Codec gate: the browser consults this before offering a playback control.
      The UI never offers media it cannot play. >>
@@ -80,7 +93,7 @@ class MediaBrowser {
       mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav";
   }
 
-  << The demo picture names paged through by the gallery (image/jpeg). >>
+  << The demo picture names paged through by the gallery. >>
   String pictureName(int i) {
     if (i == 0) return "beach-sunrise.jpg";
     if (i == 1) return "mountain-trail.png";
@@ -109,6 +122,11 @@ class MediaBrowser {
 
   void setStatus(String message) { if (statusLabel >= 0) uiWidgetSetText(statusLabel, message); }
 
+  << Format a whole-second position as "position Xs / Ys". >>
+  String positionText(int seconds) {
+    return "position " + intToStr(seconds) + "s / " + intToStr(clipSeconds) + "s";
+  }
+
   << Show one dropdown at a time; selecting the open menu closes it. >>
   void openMenu(int which) {
     int next = openMenuIndex == which ? -1 : which;
@@ -118,13 +136,15 @@ class MediaBrowser {
     uiWidgetVisible(menuHelpPanel, next == 2 ? 1 : 0);
   }
 
-  << Repaint the picture gallery caption for the current index. >>
+  << Repaint the gallery caption and reflect the current file in the location
+     bar for the current index. >>
   void showPicture() {
     String name = pictureName(galleryIndex);
     if (galleryCaption >= 0) {
       uiWidgetSetText(galleryCaption, "picture " + intToStr(galleryIndex + 1) + " / " +
         intToStr(galleryCount) + "   -   " + name);
     }
+    if (locationInput >= 0) uiWidgetSetText(locationInput, "file:///pictures/" + name);
     setStatus("Browsing " + name + " (image, codec gate passed)");
   }
 
@@ -139,25 +159,72 @@ class MediaBrowser {
     showPicture();
   }
 
-  << Transport actions change the player state label and the status bar. >>
+  << Single source of truth for transport presentation: caption, enabled
+     controls, and the playback level bar all follow from (playable, playing,
+     lastPos). Called after every state change and every seek. >>
+  void syncTransport() {
+    if (videoCaption >= 0) {
+      String s = !playable ? "transport: unavailable (codec not supported)"
+        : playing ? "transport: playing" : (lastPos > 0 ? "transport: paused" : "transport: stopped");
+      uiWidgetSetText(videoCaption, s);
+    }
+    if (positionLabel >= 0) uiWidgetSetText(positionLabel, positionText(lastPos));
+    if (playbackLevel >= 0) {
+      double frac = clipSeconds > 0 ? (lastPos * 1.0) / (clipSeconds * 1.0) : 0.0;
+      uiWidgetSetValue(playbackLevel, frac);
+    }
+    << Enable only the controls that apply in the current state. >>
+    if (btnPlay >= 0) uiWidgetSensitive(btnPlay, (playable && !playing) ? 1 : 0);
+    if (btnPause >= 0) uiWidgetSensitive(btnPause, (playable && playing) ? 1 : 0);
+    if (btnStop >= 0) uiWidgetSensitive(btnStop, (playable && (playing || lastPos > 0)) ? 1 : 0);
+    if (seekSlider >= 0) uiWidgetSensitive(seekSlider, playable ? 1 : 0);
+    if (volumeSlider >= 0) uiWidgetSensitive(volumeSlider, playable ? 1 : 0);
+  }
+
   void playMedia() {
+    if (!playable) { setStatus("DENIED: video/mp4 is not playable on this system."); return; }
     playing = true;
-    if (videoCaption >= 0) uiWidgetSetText(videoCaption, "transport: playing");
-    if (playbackLevel >= 0) uiWidgetSetValue(playbackLevel, 0.62);
+    syncTransport();
     setStatus("video/mp4 playing (codec gate passed)");
   }
   void pauseMedia() {
+    if (!playable || !playing) return;
     playing = false;
-    if (videoCaption >= 0) uiWidgetSetText(videoCaption, "transport: paused");
-    setStatus("video paused");
+    syncTransport();
+    setStatus("video paused at " + intToStr(lastPos) + "s");
   }
   void stopMedia() {
+    if (!playable) return;
     playing = false;
-    if (videoCaption >= 0) uiWidgetSetText(videoCaption, "transport: stopped");
+    lastPos = 0;
     if (seekSlider >= 0) uiWidgetSetValue(seekSlider, 0.0);
-    if (playbackLevel >= 0) uiWidgetSetValue(playbackLevel, 0.0);
-    if (positionLabel >= 0) uiWidgetSetText(positionLabel, "position 0s / 180s");
+    syncTransport();
     setStatus("video stopped (position reset to 0s)");
+  }
+
+  << Read the live slider values each frame and reflect them. The seek slider
+     drives the position readout and the level bar; the volume slider drives the
+     volume readout. Only updates the status line when a value actually moves. >>
+  void pollSliders() {
+    if (!playable) return;
+    if (seekSlider >= 0) {
+      double sv = uiWidgetGetValue(seekSlider);
+      int pos = clampInt((int) sv, 0, clipSeconds);
+      if (pos != lastPos) {
+        lastPos = pos;
+        if (positionLabel >= 0) uiWidgetSetText(positionLabel, positionText(lastPos));
+        if (playbackLevel >= 0) {
+          double frac = clipSeconds > 0 ? (lastPos * 1.0) / (clipSeconds * 1.0) : 0.0;
+          uiWidgetSetValue(playbackLevel, frac);
+        }
+        if (btnStop >= 0) uiWidgetSensitive(btnStop, (playing || lastPos > 0) ? 1 : 0);
+        setStatus("seek " + intToStr(lastPos) + "s / " + intToStr(clipSeconds) + "s");
+      }
+    }
+    if (volumeSlider >= 0 && volumeLabel >= 0) {
+      int vol = clampInt((int) uiWidgetGetValue(volumeSlider), 0, 100);
+      uiWidgetSetText(volumeLabel, "volume " + intToStr(vol) + "%");
+    }
   }
 
   void main() {
@@ -211,11 +278,11 @@ class MediaBrowser {
 
     << ---- Chrome: navigation header ---- >>
     int header = uiHeaderBar(root);
-    btnPrev = uiButton(header, "< Prev");
-    btnNext = uiButton(header, "Next >");
-    int location = uiEntry(header, "file:///pictures/current");
-    uiWidgetExpand(location, 1, 0);
-    uiWidgetMargin(location, 0, 8, 0, 8);
+    btnPrev = uiButton(header, "< Prev"); uiTooltip(btnPrev, "Previous picture");
+    btnNext = uiButton(header, "Next >"); uiTooltip(btnNext, "Next picture");
+    locationInput = uiEntry(header, "file:///pictures/");
+    uiWidgetExpand(locationInput, 1, 0);
+    uiWidgetMargin(locationInput, 0, 8, 0, 8);
     uiBadge(header, "local - no network");
 
     << Content scrolls inside a scrolled view instead of spilling past the frame. >>
@@ -253,25 +320,25 @@ class MediaBrowser {
     uiBadge(gRow, "fit to window");
 
     << Video player card with full transport (codec-gated on video/mp4). >>
-    boolean playable = canPlayType("video/mp4");
+    playable = canPlayType("video/mp4");
     int player = uiCard(colR);
     uiWidgetExpand(player, 1, 1);
     int pBox = uiBox(player, 0, 8);
     uiWidgetMargin(pBox, 12, 12, 12, 12);
     uiWidgetExpand(pBox, 1, 1);
     uiLabel(pBox, "VIDEO PLAYER  (video/mp4 - playable=" + (playable ? "yes" : "no") + ")");
-    canvas = uiImage(pBox, "intro.mp4", 420, 236);
+    int canvas = uiImage(pBox, "intro.mp4", 420, 236);
     uiWidgetExpand(canvas, 1, 1);
     videoCaption = uiLabel(pBox, "transport: stopped");
-    positionLabel = uiLabel(pBox, "position 0s / 180s");
-    seekSlider = uiSlider(pBox, 0.0, 180.0, 0.0);
+    positionLabel = uiLabel(pBox, positionText(0));
+    seekSlider = uiSlider(pBox, 0.0, 180.0, 0.0); uiTooltip(seekSlider, "Seek position");
     int transport = uiBox(pBox, 1, 8);
-    btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1);
-    btnPause = uiButton(transport, "Pause");
-    btnStop = uiButton(transport, "Stop");
+    btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1); uiTooltip(btnPlay, "Play");
+    btnPause = uiButton(transport, "Pause"); uiTooltip(btnPause, "Pause");
+    btnStop = uiButton(transport, "Stop"); uiTooltip(btnStop, "Stop and rewind");
     uiSpacer(transport);
-    uiLabel(transport, "volume");
-    volumeSlider = uiSlider(transport, 0.0, 100.0, 80.0);
+    volumeLabel = uiLabel(transport, "volume 80%");
+    volumeSlider = uiSlider(transport, 0.0, 100.0, 80.0); uiTooltip(volumeSlider, "Volume");
     int lrow = uiBox(pBox, 1, 8);
     uiLabel(lrow, "playback");
     playbackLevel = uiLevelBar(lrow, 0.0);
@@ -300,13 +367,16 @@ class MediaBrowser {
     uiWindowShow(window);
     running = true;
     showPicture();
+    syncTransport();
     print("Window shown. Gallery and transport controls change the view and player state.");
 
-    << ---- Interactive event loop: pump, then poll the controls. ---- >>
+    << ---- Interactive event loop: pump, poll sliders, then poll controls. ---- >>
     while (running) {
       int dispatched = uiAppPump(app, 1);
       if (dispatched < 0) { running = false; }
       else {
+        pollSliders();
+
         << Menubar top-level buttons toggle their dropdown panels. >>
         if (uiWidgetTakeActivated(menuFileButton) == 1) { openMenu(0); }
         if (uiWidgetTakeActivated(menuViewButton) == 1) { openMenu(1); }
@@ -315,7 +385,7 @@ class MediaBrowser {
         << File menu commands. >>
         if (uiWidgetTakeActivated(menuFileOpen) == 1) { setStatus("File - Open Picture..."); openMenu(-1); }
         if (uiWidgetTakeActivated(menuFileOpenFolder) == 1) { setStatus("File - Open Folder..."); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuFileInfo) == 1) { setStatus("File - Media Information"); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuFileInfo) == 1) { setStatus("File - Media Information - " + pictureName(galleryIndex)); openMenu(-1); }
         if (uiWidgetTakeActivated(menuFileQuit) == 1) { openMenu(-1); running = false; uiAppQuit(app, 0); }
 
         << View menu commands. >>
@@ -323,8 +393,8 @@ class MediaBrowser {
         if (uiWidgetTakeActivated(menuViewPlayer) == 1) { setStatus("View - Video Player"); openMenu(-1); }
 
         << Help menu commands. >>
-        if (uiWidgetTakeActivated(menuHelpGuide) == 1) { setStatus("Help - Media Guide"); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuHelpAbout) == 1) { setStatus("Help - MediaBrowser " + metaVersion); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuHelpGuide) == 1) { setStatus("Help - Media Guide: Prev/Next browse, Play/Pause/Stop and the sliders drive playback."); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuHelpAbout) == 1) { setStatus("Help - MediaBrowser " + metaVersion + " by " + metaAuthor); openMenu(-1); }
 
         << Gallery navigation (header buttons and in-card buttons). >>
         if (uiWidgetTakeActivated(btnNext) == 1) { nextPicture(); }

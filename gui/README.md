@@ -27,14 +27,24 @@ not a mockup.*
 - **Menu bar**: File (Open Picture / Open Folder / Media Information / Quit),
   View (Picture Gallery / Video Player), and Help (Media Guide / About),
   implemented as a horizontal button strip with collapsible dropdown panels.
-- **Navigation header**: Prev / Next, a location field, and a `local - no
-  network` badge.
+- **Navigation header**: Prev / Next, a location field that tracks the current
+  file, and a `local - no network` badge.
 - **Picture gallery**: an image canvas with a paging caption and Previous /
-  Next controls that cycle a small demo set.
-- **Video player**: a video canvas with full transport — Play / Pause / Stop, a
-  seek slider, a volume slider, and a playback level bar.
-- **Codec registry**: badges showing which media types the UI will offer; an
-  unplayable type is shown disabled. The UI never offers media it cannot play.
+  Next controls that cycle a small demo set; the location bar updates as you
+  browse.
+- **Video player**: a video canvas with full, **live** transport — Play /
+  Pause / Stop, a seek slider that drives the position readout and the playback
+  level bar, and a volume slider with a live `volume NN%` readout.
+- **State-aware controls**: the transport buttons enable and disable to match
+  the player state (Play is off while playing; Pause/Stop are off while
+  stopped), so the controls never misrepresent what will happen.
+- **Real codec gating**: if the player's media type is not playable, the whole
+  transport is disabled — not merely labelled. The UI never offers media it
+  cannot play.
+- **Tooltips** on the navigation, transport, and slider controls.
+
+Transport presentation is centralized in one `syncTransport()` routine so the
+caption, enabled controls, level bar, and status line can never drift apart.
 
 The browser owns no filesystem-mutating capability. Consistent with the
 project's security posture there is no network, telemetry, key upload, database
