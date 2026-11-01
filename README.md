@@ -2,6 +2,10 @@
 
 The SLeeLa-native edition of the local media-organizing workflow from Java.Imaging.Java.21. The organizer is implemented entirely in SLeeLa and runs on the SLeeLa VM: it enumerates, classifies, dates, names, copies, and verifies media through the VM's own OS built-ins — there is no out-of-process native provider in the organizer path. A standalone C++17 filesystem companion remains in `native/` as optional reference material.
 
+![SLeeLa Imaging desktop window](docs/images/imaging-window.png)
+
+*The native SleelaUI desktop workspace (`src/ui/ImagingWindow.sleela`): six directory roots, the dry-run / SHA-256 / confirm safety toggles, and the Preview → Apply workflow. This is a real render by the SleelaUI software rasterizer with no display, not a mockup — see [docs/SCREENSHOT.md](docs/SCREENSHOT.md) for how it is produced from `tests/screenshot-window.sleela`.*
+
 - Language target: SLeeLa syntax 2.9 (requires the source-built `sleela` compiler; the prebuilt 1.11 binary cannot run 2.x sources)
 - Reference implementation: https://github.com/mearvk/Java.Imaging.Java.21
 - SLeeLa runtime and toolkit: https://github.com/mearvk/SLeeLa
