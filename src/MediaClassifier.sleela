@@ -1,11 +1,28 @@
 << Image / video classification POLICY.
-   SLeeLa has no string-case or substring operations, so the lowercased
-   extension (with leading dot, e.g. ".jpg") is produced by the platform
-   enumeration step and handed in here already normalized. This class decides
-   the CATEGORY from that normalized token. >>
+
+   The lowercased extension (with leading dot, e.g. ".jpg") is derived in-
+   language from the filename supplied as a String[] of single-glyph cells,
+   using the standard-library SLStringCells char-cell toolkit (real
+   lastIndexOfSeq/slice/toLowerAscii — no shell, no bridge). The compiler
+   auto-resolves SLStringCells from lib/text when SLEELA_HOME is set. This
+   class then decides the CATEGORY from that normalized token. >>
 #sleela 2.9
 material;
 class MediaClassifier {
+  SLStringCells cells;
+  void init() { cells = new SLStringCells(); }
+
+  << Lowercased extension (with leading dot) from basename glyph cells, or "". >>
+  String extensionOfCells(String[] nameCells, int n) {
+    if (cells == null) { cells = new SLStringCells(); }
+    if (n <= 0) return "";
+    String[] dot = new String[1]; dot[0] = ".";
+    int d = cells.lastIndexOfSeq(nameCells, dot);
+    if (d < 0 || d >= n - 1) return "";
+    String[] extCells = cells.slice(nameCells, d, n);
+    return cells.toLowerAscii(extCells);
+  }
+
   boolean isImage(String x) {
     return x==".jpg" || x==".jpeg" || x==".heic" || x==".heif" || x==".png" ||
       x==".tiff" || x==".tif" || x==".bmp" || x==".gif" || x==".webp";

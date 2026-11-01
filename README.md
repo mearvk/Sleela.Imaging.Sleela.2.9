@@ -24,13 +24,21 @@ The SLeeLa-native edition of the local media-organizing workflow from Java.Imagi
 
 ## How the SLeeLa-native provider works
 
-SLeeLa has no in-language string manipulation (no substring, split, case folding, or char access) and no built-ins for directory listing, modification time, SHA-256, calendar date formatting, or file copy. The organizer therefore keeps all decision logic in SLeeLa — eligibility, chronological collision-sequenced naming, date-source provenance, safety gating, and digest verification — and delegates only the unavoidable text/byte work to small, fixed POSIX shell commands launched through the VM `osRun` built-in:
+**SLeeLa strings (SLEELA.syntax §3.1).** The primitive `String` supports only concatenation (`+`) and equality (`==` / `!=`). Richer text is the standard **`lib/text`** family (`SLString`, `SLStringCells`, `SLStringBuilder`, `SLFormatter`, …). Real char-level work — `indexOf`, `substring`, case folding — is in-language over a `String[]` of single-glyph cells via `SLStringCells`; operations that need code points from an *opaque* `String` are "bridged" and are not computed by this runtime. This edition uses the in-language char-cell path: it imports `SLStringCells` (auto-resolved from `/lib` when `SLEELA_HOME` is set) and derives + lowercases each file's extension with real library calls (`lastIndexOfSeq` / `slice` / `toLowerAscii`), then matches the media allow-list. No shell `tr`/`sed`/`cut` is used for extension classification.
 
-- enumeration: `find -P ... ! -type l` (symlinks never followed), sorted by modification time;
-- extension + case folding, modification time (`stat`), SHA-256 (`sha256sum`), and `yyyy-MM-dd_HH-mm-ss` formatting (`date`);
+**Decision logic lives in SLeeLa:** eligibility, classification, chronological collision-sequenced naming, date-source provenance, safety gating, and digest verification.
+
+**The shell is used only for the primitives the VM does not expose in-language**, through the `osRun` built-in with small, fixed POSIX commands:
+
+- directory enumeration: `find -P ... ! -type l` (symlinks never followed), sorted by modification time;
+- basename split into single-glyph cells (so SLeeLa can run the char-cell library on it), modification time (`stat`), SHA-256 (`sha256sum`), and `yyyy-MM-dd_HH-mm-ss` formatting (`date`);
 - binary-safe copy (`cp`) and no-overwrite publication (`mv -n` guarded by an existence check).
 
-Every shell result is returned as a single scalar value (no trailing newline) written to a per-run work file and read back with `openFile`/`read`, so SLeeLa compares it with `==`. The VM's file-I/O built-ins are not binary-safe (NUL-truncating, 4 KiB reads), which is exactly why media bytes are copied by `cp` rather than streamed through SLeeLa.
+Every shell result is returned as a single scalar value (no trailing newline) written to a per-run work file and read back with `openFile`/`read`, so SLeeLa compares it with `==`. The VM's file-I/O built-ins are not binary-safe (NUL-truncating, 4 KiB reads), which is why media bytes are copied by `cp` rather than streamed through SLeeLa. These are exactly the operations the `lib/text`/OS surface designates as runtime/bridged work.
+
+## Imports and library resolution
+
+The SLeeLa driver auto-resolves dependencies: it scans the program for capitalized class names and merges the matching units from `/lib` (rooted at `SLEELA_HOME`), transitively. A dotted `import a.b.c;` selects a subtree to disambiguate duplicate class names across `/lib`. This edition relies on that mechanism to pull in `SLStringCells` from `lib/text` with no manual wiring — `SLEELA_HOME` must point at the SLeeLa checkout when running.
 
 ## Running it
 
@@ -59,7 +67,7 @@ SLEELA_HOME=$SLEELA SLEELA_BIN=$SLEELA/impl/build/sleela tests/run-native-demo.s
 
 This is the SLeeLa-native original edition. The organizer compiles and runs on the source-built SLeeLa VM (`sleela run src/ImagingOrganizer.sleela`) and performs real work: `tests/run-native-demo.sh` builds a fixture, runs a read-only preview and a verified apply, and asserts that every eligible file is organized to the correct date-named destination, that an unsupported file is skipped, that a same-timestamp collision produces an `_002` name, that each published copy's SHA-256 equals its source, and that every original is preserved.
 
-`ImagingFileSystem.sleela` is now a real provider backed by the VM OS built-ins (`osRun`/`osExists`/`osIsDir`/`osFileSize`/`osMakeDir`/`openFile`/`read`/`close` plus fixed POSIX shell helpers), not a facade. The two-stage reviewed plan binds each eligible source to its preview-time SHA-256 digest; apply recomputes the source digest (rejecting same-size/same-timestamp content substitution), verifies the staged copy against the reviewed digest, and publishes without replacing any existing file.
+`ImagingFileSystem.sleela` is now a real provider backed by the VM OS built-ins (`osRun`/`osExists`/`osIsDir`/`osFileSize`/`osMakeDir`/`openFile`/`read`/`close` plus fixed POSIX shell helpers), not a facade. Classification is real in-language work via the standard `lib/text` `SLStringCells` toolkit over a `String[]` of basename glyph cells. The two-stage reviewed plan binds each eligible source to its preview-time SHA-256 digest; apply recomputes the source digest (rejecting same-size/same-timestamp content substitution), verifies the staged copy against the reviewed digest, and publishes without replacing any existing file.
 
 Honest limitations of the pure-SLeeLa path: capture-date provenance is filesystem modification time (no in-language EXIF/QuickTime parser is available, matching the Java reference's fallback; the application never invents the current date). The shell helpers are POSIX (Linux/macOS); Windows would need equivalent `cmd`/PowerShell helpers. No-overwrite publication is existence-guarded `mv -n` rather than a kernel-atomic O_EXCL primitive, because the VM exposes no exclusive-create built-in. Embedded-metadata dates, HEIF/HEIC item metadata, race-free descriptor-relative operations, asynchronous cancellation, and Windows runtime evidence remain open work.
 

@@ -104,14 +104,20 @@ class ImagingFileSystem {
       + "-o -iname \"*.gif\" -o -iname \"*.webp\" -o -iname \"*.mov\" -o -iname \"*.mp4\" "
       + "-o -iname \"*.m4v\" -o -iname \"*.mpeg\" -o -iname \"*.mpg\" -o -iname \"*.avi\" \\) "
       + "-printf \"%T@ %p\\n\" 2>/dev/null | sort -n | sed \"s/^[0-9.]* //\" > " + q(list) + "'");
+    << For each record, emit the scalar fields plus the BASENAME split into one
+       glyph per numbered file (k.g/<i>) and a glyph count (k.gn). SLeeLa reads
+       the glyphs back into a String[] and derives the extension and its case
+       in-language via SLStringCells; extension tokenizing is deliberately NOT
+       done in the shell. >>
     String pd = planDir;
     osRun("sh -c '"
       + "k=0; while IFS= read -r p; do "
-      + "ext=\".$(printf \"%s\" \"$p\" | sed \"s/.*\\.//\" | tr \"[:upper:]\" \"[:lower:]\")\"; "
-      + "printf \"%s\" \"$ext\" > \"" + pd + "/$k.ext\"; "
       + "printf \"%s\" \"$(stat -c %Y \"$p\" 2>/dev/null)\" > \"" + pd + "/$k.epoch\"; "
       + "printf \"%s\" \"$p\" > \"" + pd + "/$k.src\"; "
       + "printf \"%s\" \"$(sha256sum \"$p\" 2>/dev/null | cut -d\" \" -f1)\" > \"" + pd + "/$k.sha\"; "
+      + "b=$(basename \"$p\"); n=${#b}; mkdir -p \"" + pd + "/$k.g\"; "
+      + "i=1; while [ $i -le $n ]; do printf \"%s\" \"$(printf %s \"$b\" | cut -c$i)\" > \"" + pd + "/$k.g/$((i-1))\"; i=$((i+1)); done; "
+      + "printf \"%s\" \"$n\" > \"" + pd + "/$k.gn\"; "
       + "k=$((k+1)); done < " + q(list) + "; "
       + "printf \"%s\" \"$k\" > \"" + pd + "/count.txt\""
       + "'");
@@ -119,10 +125,24 @@ class ImagingFileSystem {
   }
 
   << Enumeration accessors read back by the session loop (one scalar each). >>
-  String planExtension(int k) { return readField(planDir + "/" + k + ".ext"); }
   String planSourcePath(int k) { return readField(planDir + "/" + k + ".src"); }
   String planEpoch(int k) { return readField(planDir + "/" + k + ".epoch"); }
   String planDigest(int k) { return readField(planDir + "/" + k + ".sha"); }
+
+  << Read the basename back as a String[] of single-glyph cells (sentinel on the
+     first missing numbered glyph file). >>
+  String[] planNameCells(int k) {
+    String[] cells = new String[512];
+    int i = 0;
+    while (i < 512 && osExists(planDir + "/" + k + ".g/" + i) == 1) {
+      cells[i] = readField(planDir + "/" + k + ".g/" + i);
+      i = i + 1;
+    }
+    String[] out = new String[i];
+    int j = 0;
+    while (j < i) { out[j] = cells[j]; j = j + 1; }
+    return out;
+  }
 
   << Sentinel bound: record k exists iff its .src field file exists. >>
   boolean planHasRecord(int k) { return osExists(planDir + "/" + k + ".src") == 1; }

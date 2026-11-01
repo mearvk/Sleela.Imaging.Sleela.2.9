@@ -2,22 +2,51 @@
 
    This file is the self-contained, executable form of the SLeeLa Imaging
    organizer. The SLeeLa runtime runs a program from one merged translation
-   unit, so this file inlines every application class (the same logic kept
-   modular under src/*.sleela) plus a headless demo main().
+   unit, so this file inlines every application class plus a headless demo
+   main(). It additionally references SLStringCells from the standard text
+   library (lib/text); the compiler auto-resolves that unit from /lib when
+   SLEELA_HOME points at the SLeeLa checkout, so no manual wiring is needed.
+
+   SLeeLa String support (SLEELA.syntax 3.1): the primitive String offers only
+   concatenation (+) and equality (==/!=). Richer text is the lib/text family
+   (SLString, SLStringCells, SLStringBuilder, SLFormatter, ...). Real
+   char-level work (indexOf, substring, case folding) is in-language over a
+   String[] of single-glyph cells via SLStringCells; this edition uses exactly
+   that path to derive and lowercase a file extension for classification.
+   Operations that need code points from an OPAQUE String (not a glyph array)
+   are "bridged" and are not computed in this runtime, which is why the shell
+   is still used for the primitives the VM does not expose in-language:
+   directory enumeration, modification time, SHA-256, epoch-to-calendar
+   formatting, and binary-safe copy.
 
    Run it with the source-built compiler:
 
-     SLEELA_HOME=/path/to/SLeeLa sleela run src/ImagingOrganizer.sleela \
-       <source> <images> <mov> <mp4> <mpeg> <avi> [apply]
+     SLEELA_HOME=/path/to/SLeeLa sleela run src/ImagingOrganizer.sleela
 
-   With no arguments it organizes the bundled ./fixture tree in dry-run
-   (preview-only). Pass the six roots and the literal word "apply" as the 7th
-   argument to actually publish verified copies (originals are preserved). >>
+   It organizes the bundled ./fixture tree: a read-only preview, then a
+   verified apply that publishes copies without overwriting and preserves every
+   original. >>
 #sleela 2.9
 
 << ---------- value / policy classes ---------- >>
 
+<< Classification derives the lowercased extension from a filename supplied as
+   a String[] of single-glyph cells, using the standard-library SLStringCells
+   char-cell toolkit (real in-language indexOf/slice/case-fold, no shell, no
+   bridge), then matches it against the media allow-list. >>
 class MediaClassifier {
+  SLStringCells cells;
+  void init() { cells = new SLStringCells(); }
+  << Lowercased extension (with leading dot) from basename glyph cells, or "". >>
+  String extensionOfCells(String[] nameCells, int n) {
+    if (cells == null) { cells = new SLStringCells(); }
+    if (n <= 0) return "";
+    String[] dot = new String[1]; dot[0] = ".";
+    int d = cells.lastIndexOfSeq(nameCells, dot);
+    if (d < 0 || d >= n - 1) return "";
+    String[] extCells = cells.slice(nameCells, d, n);
+    return cells.toLowerAscii(extCells);
+  }
   boolean isImage(String x) {
     return x==".jpg" || x==".jpeg" || x==".heic" || x==".heif" || x==".png" ||
       x==".tiff" || x==".tif" || x==".bmp" || x==".gif" || x==".webp";
@@ -153,24 +182,43 @@ class ImagingFileSystem {
       + "-o -iname \"*.gif\" -o -iname \"*.webp\" -o -iname \"*.mov\" -o -iname \"*.mp4\" "
       + "-o -iname \"*.m4v\" -o -iname \"*.mpeg\" -o -iname \"*.mpg\" -o -iname \"*.avi\" \\) "
       + "-printf \"%T@ %p\\n\" 2>/dev/null | sort -n | sed \"s/^[0-9.]* //\" > " + q(list) + "'");
+    << For each record, emit the scalar fields plus the BASENAME split into one
+       glyph per numbered file (k.g/<i>) and a glyph count (k.gn). The glyphs
+       are read back into a String[] so SLeeLa derives the extension and its
+       case in-language via SLStringCells. Extension tokenizing is deliberately
+       NOT done in the shell. >>
     String pd = planDir;
     osRun("sh -c '"
       + "k=0; while IFS= read -r p; do "
-      + "ext=\".$(printf \"%s\" \"$p\" | sed \"s/.*\\.//\" | tr \"[:upper:]\" \"[:lower:]\")\"; "
-      + "printf \"%s\" \"$ext\" > \"" + pd + "/$k.ext\"; "
       + "printf \"%s\" \"$(stat -c %Y \"$p\" 2>/dev/null)\" > \"" + pd + "/$k.epoch\"; "
       + "printf \"%s\" \"$p\" > \"" + pd + "/$k.src\"; "
       + "printf \"%s\" \"$(sha256sum \"$p\" 2>/dev/null | cut -d\" \" -f1)\" > \"" + pd + "/$k.sha\"; "
+      + "b=$(basename \"$p\"); n=${#b}; mkdir -p \"" + pd + "/$k.g\"; "
+      + "i=1; while [ $i -le $n ]; do printf \"%s\" \"$(printf %s \"$b\" | cut -c$i)\" > \"" + pd + "/$k.g/$((i-1))\"; i=$((i+1)); done; "
+      + "printf \"%s\" \"$n\" > \"" + pd + "/$k.gn\"; "
       + "k=$((k+1)); done < " + q(list) + "; "
       + "printf \"%s\" \"$k\" > \"" + pd + "/count.txt\""
       + "'");
     return osExists(planDir + "/count.txt") == 1;
   }
-  String planExtension(int k) { return readField(planDir + "/" + k + ".ext"); }
   String planSourcePath(int k) { return readField(planDir + "/" + k + ".src"); }
   String planEpoch(int k) { return readField(planDir + "/" + k + ".epoch"); }
   String planDigest(int k) { return readField(planDir + "/" + k + ".sha"); }
   boolean planHasRecord(int k) { return osExists(planDir + "/" + k + ".src") == 1; }
+  << Read the basename back as a String[] of single-glyph cells (sentinel on the
+     first missing numbered glyph file). >>
+  String[] planNameCells(int k) {
+    String[] cells = new String[512];
+    int i = 0;
+    while (i < 512 && osExists(planDir + "/" + k + ".g/" + i) == 1) {
+      cells[i] = readField(planDir + "/" + k + ".g/" + i);
+      i = i + 1;
+    }
+    String[] out = new String[i];
+    int j = 0;
+    while (j < i) { out[j] = cells[j]; j = j + 1; }
+    return out;
+  }
   << epochSeconds arrives as a scalar string token from the snapshot; a
      non-empty all-digit value formats to yyyy-MM-dd_HH-mm-ss (UTC), else "". >>
   String formatTimestamp(String epochSeconds) {
@@ -236,6 +284,7 @@ class ImagingSession {
     safety = new ImagingSafetyPolicy();
     filesystem = new ImagingFileSystem();
     classifier = new MediaClassifier();
+    classifier.init();
     dates = new MediaDateResolver();
     naming = new MediaNaming();
     configured = (config != null);
@@ -284,10 +333,13 @@ class ImagingSession {
     int k = 0;
     int plan = 0;
     while (filesystem.planHasRecord(k) && k < 1024) {
-      String ext = filesystem.planExtension(k);
       String src = filesystem.planSourcePath(k);
       String epoch = filesystem.planEpoch(k);
       String digest = filesystem.planDigest(k);
+      << Derive the lowercased extension in-language from basename glyph cells
+         using the standard SLStringCells char-cell toolkit. >>
+      String[] nameCells = filesystem.planNameCells(k);
+      String ext = classifier.extensionOfCells(nameCells, arrayLength(nameCells));
       String category = classifier.category(ext);
       << No embedded EXIF capture time is available to pure SLeeLa, so the
          provenance is filesystem modification time whenever an epoch is present

@@ -40,6 +40,7 @@ class ImagingSession {
     safety = new ImagingSafetyPolicy();
     filesystem = new ImagingFileSystem();
     classifier = new MediaClassifier();
+    classifier.init();
     dates = new MediaDateResolver();
     naming = new MediaNaming();
     configured = (config != null);
@@ -97,10 +98,13 @@ class ImagingSession {
     int k = 0;
     int plan = 0;
     while (filesystem.planHasRecord(k) && k < 1024) {
-      String ext = filesystem.planExtension(k);
       String src = filesystem.planSourcePath(k);
       String epoch = filesystem.planEpoch(k);
       String digest = filesystem.planDigest(k);
+      << Derive the lowercased extension in-language from basename glyph cells
+         using the standard SLStringCells char-cell toolkit. >>
+      String[] nameCells = filesystem.planNameCells(k);
+      String ext = classifier.extensionOfCells(nameCells, arrayLength(nameCells));
       String category = classifier.category(ext);
 
       << No embedded EXIF capture time is available to pure SLeeLa, so the
