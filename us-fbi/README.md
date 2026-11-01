@@ -9,9 +9,16 @@ other SleelaUI windows (`src/ui/ImagingWindow.sleela`) and the reference
 
 ![SLeeLa Media Browser window](media-browser.png)
 
-*A real render of `MediaBrowser.sleela` by the SleelaUI software rasterizer with
-no display server — produced headlessly from `screenshot-mediabrowser.sleela`,
-not a mockup.*
+*Gallery / local-player view.*
+
+![SLeeLa Media Browser window — YouTube stream state](media-browser-stream.png)
+
+*YouTube stream state: the location bar holds a recognized YouTube URL, the
+in-app transport is gated off, and the player card offers the browser handoff.*
+
+*Both are real renders of `MediaBrowser.sleela` by the SleelaUI software
+rasterizer with no display server — produced headlessly from
+`screenshot-mediabrowser.sleela`, not mockups.*
 
 ## Files
 
