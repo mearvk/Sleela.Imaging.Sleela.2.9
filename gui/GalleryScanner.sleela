@@ -1,0 +1,114 @@
+<< GalleryScanner — a real on-disk picture enumerator for the media browser.
+
+   Enumerates the image files in a single directory using the same technique the
+   project's ImagingFileSystem provider uses: SLeeLa owns the decision logic and
+   delegates the filesystem primitives it cannot do in-language to small, fixed
+   POSIX shell commands launched through the VM osRun built-in. Every shell
+   RESULT is written WITHOUT a trailing newline into a per-run work file and read
+   back with openFile/read, so SLeeLa can compare and index it.
+
+   The scan is read-only: it lists files, it never creates, moves, or deletes
+   media. Symbolic links are not followed (find -P ... ! -type l). Only the
+   browser image allow-list is matched (jpg/jpeg/png/gif/bmp/webp/tiff/tif).
+   Results are exposed as a count plus per-index basename and absolute-path
+   accessors, mirroring ImagingFileSystem's per-field file model. >>
+#sleela 2.9
+material;
+class GalleryScanner {
+  String workDir = "";
+  int fileCount = 0;
+  boolean ready = false;
+
+  << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
+  String metaVersion = "1.0.0";
+  int metaId = 2912;
+  String metaAuthor = "Max Rupplin / MEARVK LLC";
+  String metaDate = "2026-11-01";
+  String metaCopyright = "MEARVK LLC";
+  String metaTrademark = "none";
+  String metaCorporation = "MEARVK LLC";
+  String metaOrigin = "International";
+  String metaBirthDate = "2026-11-01";
+  int metaScienceRating = 6;
+  String metaNationalSchedule = "none";
+  String getMetaVersion() { return metaVersion; }
+  int getMetaId() { return metaId; }
+  String getAuthor() { return metaAuthor; }
+  String getOrigin() { return metaOrigin; }
+  String getNationalSchedule() { return metaNationalSchedule; }
+
+  << Quote a path for a double-quoted argument inside the single-quoted sh
+     command. The caller validates the path before any command runs. >>
+  String q(String path) { return "\"" + path + "\""; }
+
+  << Read one scalar field file produced by the shell (no trailing newline). >>
+  String readField(String path) {
+    int h = openFile(path, "r");
+    if (h < 0) return "";
+    String s = read(h);
+    close(h);
+    return s;
+  }
+
+  << Prepare a private per-run work area under the OS temp dir, with a local
+     fallback when temp is not writable. >>
+  boolean beginRun() {
+    String base = osTempDir() + "/sleela-gallery";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-gallery-work"; osMakeDir(base); }
+    long stamp = timeUtcMillis();
+    workDir = base + "/run-" + stamp;
+    osMakeDir(workDir);
+    return osIsDir(workDir) == 1;
+  }
+
+  << Scan one directory (non-recursive) for image files. Produces, in workDir:
+     list.txt (sorted basenames), k.name and k.path per record, and count.txt.
+     Returns the number of images found, or 0 on any failure or empty folder. >>
+  int scan(String folder) {
+    ready = false;
+    fileCount = 0;
+    if (folder == "") return 0;
+    if (osIsDir(folder) != 1) return 0;
+    if (!beginRun()) return 0;
+    String list = workDir + "/list.txt";
+    << Enumerate basenames of allow-listed image files, symlinks excluded,
+       sorted for a stable order. Errors are swallowed to a stable empty list. >>
+    osRun("sh -c 'cd " + q(folder) + " 2>/dev/null && ls -1 2>/dev/null "
+      + "| grep -iE \"[.](jpg|jpeg|png|gif|bmp|webp|tiff|tif)$\" "
+      + "| sort > " + q(list) + " || : > " + q(list) + "'");
+    << For each basename, write k.name (basename) and k.path (absolute path),
+       plus count.txt. The absolute path is the folder joined with the name. >>
+    String wd = workDir;
+    osRun("sh -c '"
+      + "k=0; f=" + q(folder) + "; "
+      + "while IFS= read -r b; do "
+      + "printf \"%s\" \"$b\" > \"" + wd + "/$k.name\"; "
+      + "printf \"%s/%s\" \"$f\" \"$b\" > \"" + wd + "/$k.path\"; "
+      + "k=$((k+1)); done < " + q(list) + "; "
+      + "printf \"%s\" \"$k\" > \"" + wd + "/count.txt\""
+      + "'");
+    String cnt = readField(workDir + "/count.txt");
+    if (cnt == "") { fileCount = 0; return 0; }
+    << Count back by probing the per-record name files (fail-closed on a gap). >>
+    int k = 0;
+    while (k < 100000 && osExists(workDir + "/" + k + ".name") == 1) { k = k + 1; }
+    fileCount = k;
+    ready = fileCount > 0;
+    return fileCount;
+  }
+
+  int count() { return fileCount; }
+  boolean isReady() { return ready; }
+
+  << Basename of record i, or "" when out of range. >>
+  String nameAt(int i) {
+    if (!ready || i < 0 || i >= fileCount) return "";
+    return readField(workDir + "/" + i + ".name");
+  }
+  << Absolute path of record i, or "" when out of range. >>
+  String pathAt(int i) {
+    if (!ready || i < 0 || i >= fileCount) return "";
+    return readField(workDir + "/" + i + ".path");
+  }
+}

@@ -1,0 +1,65 @@
+#sleela 2.9
+<< Screenshot driver for the SLeeLa Imaging desktop window.
+
+   Builds the same SleelaUI widget tree as src/ui/ImagingWindow.sleela, fills
+   the fields with realistic example values, and renders a few frames so the
+   layout settles. When the host `sleela` is built with the SleelaUI HEADLESS
+   backend and SLEELA_UI_DUMP names an output path, Window::render() writes the
+   rendered canvas as a binary PPM (P6) with no display required. Convert the
+   PPM to PNG with tests/ppm_to_png.py. See docs/SCREENSHOT.md for the exact
+   build + run commands used to produce docs/images/imaging-window.png. >>
+class ImagingWindowShot {
+  void main() {
+    int app = uiAppCreate("com.mearvk.sleela.imaging");
+    if (app < 0) { print("SLeeLa Imaging: no display backend available."); return; }
+    int theme = uiThemePreset(3);
+    int window = uiWindowCreate(app, "SLeeLa Imaging 2.9", 1040, 820, theme);
+    if (window < 0) { print("SLeeLa Imaging: window creation failed."); uiAppDestroy(app); return; }
+    uiWindowSetBuffering(window, 2); uiWindowSetMinSize(window, 820, 640);
+    int root = uiWindowRoot(window); int page = uiBox(root, 0, 12);
+    uiWidgetMargin(page, 16, 16, 16, 16); uiWidgetExpand(page, 1, 1);
+    uiHeading(page, "SLeeLa Imaging", 26);
+    uiLabel(page, "Local-first photo and video organization. Originals are preserved.");
+
+    int sourceFrame = uiFrame(page, "Source and destinations");
+    int form = uiBox(sourceFrame, 0, 8); uiWidgetMargin(form, 10, 10, 10, 10);
+    uiLabel(form, "Source directory");
+    uiEntry(form, "/home/max/Desktop/Photos");
+    uiLabel(form, "Images destination");
+    uiEntry(form, "/home/max/Desktop/Organized/Images");
+
+    int videoFrame = uiFrame(page, "Video destinations");
+    int videos = uiBox(videoFrame, 0, 8); uiWidgetMargin(videos, 10, 10, 10, 10);
+    uiLabel(videos, "MOV destination");
+    uiEntry(videos, "/home/max/Desktop/Organized/Videos/MOV");
+    uiLabel(videos, "MP4 / M4V destination");
+    uiEntry(videos, "/home/max/Desktop/Organized/Videos/MP4");
+    uiLabel(videos, "MPEG / MPG destination");
+    uiEntry(videos, "/home/max/Desktop/Organized/Videos/MPEG");
+    uiLabel(videos, "AVI destination");
+    uiEntry(videos, "/home/max/Desktop/Organized/Videos/AVI");
+
+    int optionsFrame = uiFrame(page, "Review and safety");
+    int options = uiBox(optionsFrame, 0, 6); uiWidgetMargin(options, 10, 10, 10, 10);
+    uiCheckBox(options, "Scan subdirectories recursively", 0);
+    uiCheckBox(options, "Dry run - preview only (uncheck to enable Apply)", 1);
+    uiCheckBox(options, "Require SHA-256 verification", 1);
+    uiCheckBox(options, "I reviewed the plan and explicitly confirm", 0);
+
+    int actions = uiBox(page, 1, 10);
+    int previewButton = uiButton(actions, "Preview"); uiWidgetSuggested(previewButton, 1);
+    int applyButton = uiButton(actions, "Apply reviewed plan"); uiWidgetSensitive(applyButton, 0);
+    uiButton(actions, "Quit");
+
+    int statusLabel = uiInfoBar(page, "Preview ready. 6 file(s) planned, 1 skipped. No files have been changed.", 1);
+    uiWidgetSizeRequest(statusLabel, 0, 48);
+    uiLabel(page, "Privacy: no network, telemetry, key upload, database logging, or source deletion.");
+
+    uiWindowShow(window);
+    int i = 0;
+    while (i < 3) { uiAppPump(app, 0); i = i + 1; }
+    print("rendered (set SLEELA_UI_DUMP to capture a PPM)");
+    uiAppDestroy(app);
+    if (theme >= 0) uiThemeDestroy(theme);
+  }
+}

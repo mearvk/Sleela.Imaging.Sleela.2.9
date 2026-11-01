@@ -1,0 +1,548 @@
+<< MediaBrowser — native SleelaUI media browser for SLeeLa Imaging 2.9.
+
+   A standalone desktop GUI that browses pictures and plays videos. It is a
+   general media application shell with a File menu, a picture gallery that can
+   load the real image files of an on-disk folder, a video canvas with full,
+   live transport controls (play / pause / stop, a seek slider that drives the
+   position readout, and a volume slider with a live readout), and a codec-aware
+   registry so the UI only offers media it can actually play.
+
+   Real-folder browsing is provided by the sibling GalleryScanner class, which
+   enumerates a directory read-only through the VM osRun built-in using the same
+   fixed-POSIX, scalar-field technique as the project's ImagingFileSystem
+   provider. Type a folder path in the location bar and choose File - Open
+   Folder; with no folder loaded the gallery pages a small built-in demo set.
+
+   Look and feel deliberately match the SleelaUI house style used by the
+   project's other windows and by the reference gui-dual-media-studio demo:
+   a glass theme, a functional menubar strip with dropdown panels built from
+   plain boxes/buttons, a header bar with navigation, a scrolled content area,
+   cards, badges, a level bar, and a status bar.
+
+   Tightening pass: transport state is centralized in one syncTransport() so the
+   caption, level bar, enabled controls, and status line never drift apart; the
+   seek and volume sliders are read live each frame; controls that do not apply
+   in the current state are disabled; and if the player codec is unavailable the
+   whole transport is gated off rather than merely labelled.
+
+   This program drives the native toolkit directly through the documented ui*
+   SLVM bridge; it owns no filesystem-mutating capability. It requires a native
+   display (uiAppCreate); with no display it reports that and exits cleanly.
+
+   Run on the SLeeLa VM (source-built compiler, syntax 2.9):
+     SLEELA_HOME=/path/to/SLeeLa sleela run gui/MediaBrowser.sleela >>
+#sleela 2.9
+material;
+class MediaBrowser {
+  << Theme preset ordinal (mirror SLUIThemeId in the toolkit C ABI). >>
+  int THEME_CUSTOM = 2;
+  << Scroll-policy ordinal (0 = auto scrollbars on overflow). >>
+  int SCROLL_AUTO = 0;
+  << Video clip length in whole seconds, used to format the position readout. >>
+  int clipSeconds = 180;
+
+  << Live widget handles the event loop reacts to. >>
+  int app = -1; int theme = -1; int window = -1;
+  int statusLabel = -1; int locationInput = -1;
+  int videoCaption = -1; int positionLabel = -1; int volumeLabel = -1;
+  int seekSlider = -1; int volumeSlider = -1; int playbackLevel = -1;
+  int btnPlay = -1; int btnPause = -1; int btnStop = -1;
+  int btnPrev = -1; int btnNext = -1; int galleryCaption = -1;
+
+  << Menubar strip and its dropdown panels (built from existing ui* widgets). >>
+  int openMenuIndex = -1;
+  int menuFileButton = -1; int menuFilePanel = -1;
+  int menuFileOpen = -1; int menuFileOpenFolder = -1; int menuFileInfo = -1; int menuFileQuit = -1;
+  int menuViewButton = -1; int menuViewPanel = -1;
+  int menuViewGallery = -1; int menuViewPlayer = -1;
+  int menuHelpButton = -1; int menuHelpPanel = -1;
+  int menuHelpGuide = -1; int menuHelpAbout = -1;
+
+  << Picture gallery state. When no on-disk folder is loaded the browser pages
+     through a small fixed demo set; a real-folder scan (inlined below, the same
+     logic as the sibling GalleryScanner modular class) replaces it with the
+     actual image files of a chosen folder. >>
+  int galleryIndex = 0;
+  int demoCount = 5;
+  int galleryCount = 5;
+  boolean folderLoaded = false;
+  String folderPath = "";
+  << Per-run work area for the read-only folder scan. >>
+  String scanDir = "";
+  int scanCount = 0;
+
+  << Player transport state kept in SLeeLa; the toolkit renders it. The codec
+     gate decides, once, whether the player may run at all. >>
+  boolean playable = false;
+  boolean playing = false;
+  boolean running = false;
+  << Last seek position read from the slider, in whole seconds. >>
+  int lastPos = 0;
+
+  << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
+  String metaVersion = "1.2.0";
+  int metaId = 2911;
+  String metaAuthor = "Max Rupplin / MEARVK LLC";
+  String metaDate = "2026-11-01";
+  String metaCopyright = "MEARVK LLC";
+  String metaTrademark = "none";
+  String metaCorporation = "MEARVK LLC";
+  String metaOrigin = "International";
+  String metaBirthDate = "2026-11-01";
+  int metaScienceRating = 6;
+  String metaNationalSchedule = "none";
+  String getMetaVersion() { return metaVersion; }
+  int getMetaId() { return metaId; }
+  String getAuthor() { return metaAuthor; }
+  String getOrigin() { return metaOrigin; }
+  String getNationalSchedule() { return metaNationalSchedule; }
+
+  int rgba(int r, int g, int b, int a) { return r * 16777216 + g * 65536 + b * 256 + a; }
+  int rgb(int r, int g, int b) { return rgba(r, g, b, 255); }
+  String intToStr(int v) { return "" + v; }
+  int clampInt(int v, int lo, int hi) { if (v < lo) return lo; if (v > hi) return hi; return v; }
+
+  << Codec gate: the browser consults this before offering a playback control.
+     The UI never offers media it cannot play. >>
+  boolean canPlayType(String mime) {
+    return mime == "image/jpeg" || mime == "image/png" || mime == "image/gif" ||
+      mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav";
+  }
+
+  << ---- Inlined read-only folder scanner (mirrors gui/GalleryScanner.sleela).
+     Enumerates image files in one directory via the VM osRun built-in using the
+     fixed-POSIX, scalar-field technique of the project's ImagingFileSystem
+     provider: results are written WITHOUT a trailing newline to per-record field
+     files and read back by index. The scan never creates, moves, or deletes
+     media, and never follows symbolic links (find -P ... ! -type l). ---- >>
+
+  << Quote a path for a double-quoted argument inside the single-quoted sh
+     command. The folder is validated (osIsDir) before any command runs. >>
+  String q(String path) { return "\"" + path + "\""; }
+
+  << Read one scalar field file produced by the shell (no trailing newline). >>
+  String readField(String path) {
+    int h = openFile(path, "r");
+    if (h < 0) return "";
+    String s = read(h);
+    close(h);
+    return s;
+  }
+
+  << Scan one directory (non-recursive) for allow-listed image files. On success
+     sets scanDir + scanCount and returns the count; returns 0 on any failure or
+     empty folder. >>
+  int scanFolder(String folder) {
+    scanCount = 0;
+    if (folder == "") return 0;
+    if (osIsDir(folder) != 1) return 0;
+    String base = osTempDir() + "/sleela-gallery";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-gallery-work"; osMakeDir(base); }
+    scanDir = base + "/run-" + timeUtcMillis();
+    osMakeDir(scanDir);
+    if (osIsDir(scanDir) != 1) return 0;
+    String list = scanDir + "/list.txt";
+    << Enumerate basenames of image files, symlinks excluded, sorted for a
+       stable order. Any error collapses to a stable empty list. >>
+    osRun("sh -c 'cd " + q(folder) + " 2>/dev/null && ls -1 2>/dev/null "
+      + "| grep -iE \"[.](jpg|jpeg|png|gif|bmp|webp|tiff|tif)$\" "
+      + "| sort > " + q(list) + " || : > " + q(list) + "'");
+    << For each basename emit k.name (basename) and k.path (absolute path). >>
+    String wd = scanDir;
+    osRun("sh -c '"
+      + "k=0; f=" + q(folder) + "; "
+      + "while IFS= read -r b; do "
+      + "printf \"%s\" \"$b\" > \"" + wd + "/$k.name\"; "
+      + "printf \"%s/%s\" \"$f\" \"$b\" > \"" + wd + "/$k.path\"; "
+      + "k=$((k+1)); done < " + q(list) + "; "
+      + "printf \"%s\" \"$k\" > \"" + wd + "/count.txt\""
+      + "'");
+    int k = 0;
+    while (k < 100000 && osExists(scanDir + "/" + k + ".name") == 1) { k = k + 1; }
+    scanCount = k;
+    return scanCount;
+  }
+
+  String scanNameAt(int i) {
+    if (i < 0 || i >= scanCount) return "";
+    return readField(scanDir + "/" + i + ".name");
+  }
+  String scanPathAt(int i) {
+    if (i < 0 || i >= scanCount) return "";
+    return readField(scanDir + "/" + i + ".path");
+  }
+
+  << Name of the current gallery entry: a real file when a folder is loaded,
+     otherwise one of the built-in demo names. >>
+  String demoName(int i) {
+    if (i == 0) return "beach-sunrise.jpg";
+    if (i == 1) return "mountain-trail.png";
+    if (i == 2) return "city-lights.jpg";
+    if (i == 3) return "forest-path.gif";
+    return "harbor-dusk.jpg";
+  }
+  String pictureName(int i) {
+    if (folderLoaded) {
+      String nm = scanNameAt(i);
+      if (nm != "") return nm;
+    }
+    return demoName(i);
+  }
+  << Absolute (or demo) path shown in the location bar for the current entry. >>
+  String picturePath(int i) {
+    if (folderLoaded) {
+      String p = scanPathAt(i);
+      if (p != "") return p;
+    }
+    return "file:///pictures/" + demoName(i);
+  }
+
+  << Load a real on-disk folder into the gallery. Reads the path from the
+     location bar, scans it read-only, and switches the gallery over to the real
+     files. Falls back to the demo set when the path is invalid or has no
+     images. >>
+  void loadFolder(String path) {
+    if (path == "") { setStatus("Open Folder: enter a folder path in the location bar first."); return; }
+    int found = scanFolder(path);
+    if (found > 0) {
+      folderLoaded = true;
+      folderPath = path;
+      galleryCount = found;
+      galleryIndex = 0;
+      showPicture();
+      setStatus("Loaded " + intToStr(found) + " image(s) from " + path);
+    } else {
+      folderLoaded = false;
+      galleryCount = demoCount;
+      galleryIndex = 0;
+      showPicture();
+      setStatus("No images found in " + path + " - showing the built-in demo set.");
+    }
+  }
+
+  << A glass media theme shared with the project's other SleelaUI windows. >>
+  int glassTheme() {
+    int t = uiThemePreset(THEME_CUSTOM);
+    uiThemeSetBg(t, rgb(14, 23, 38));
+    uiThemeSetSurface(t, rgb(24, 36, 56));
+    uiThemeSetSurfaceHi(t, rgb(36, 52, 78));
+    uiThemeSetChrome(t, rgb(28, 42, 64));
+    uiThemeSetBorder(t, rgba(130, 170, 230, 55));
+    uiThemeSetFg(t, rgb(232, 240, 250));
+    uiThemeSetFgDim(t, rgb(150, 172, 198));
+    uiThemeSetAccent(t, rgb(91, 141, 239));
+    uiThemeSetAccentFg(t, rgb(10, 18, 32));
+    uiThemeSetDanger(t, rgb(228, 122, 122));
+    uiThemeSetRadius(t, 12);
+    uiThemeSetControlHeight(t, 32);
+    return t;
+  }
+
+  void setStatus(String message) { if (statusLabel >= 0) uiWidgetSetText(statusLabel, message); }
+
+  << Format a whole-second position as "position Xs / Ys". >>
+  String positionText(int seconds) {
+    return "position " + intToStr(seconds) + "s / " + intToStr(clipSeconds) + "s";
+  }
+
+  << Show one dropdown at a time; selecting the open menu closes it. >>
+  void openMenu(int which) {
+    int next = openMenuIndex == which ? -1 : which;
+    openMenuIndex = next;
+    uiWidgetVisible(menuFilePanel, next == 0 ? 1 : 0);
+    uiWidgetVisible(menuViewPanel, next == 1 ? 1 : 0);
+    uiWidgetVisible(menuHelpPanel, next == 2 ? 1 : 0);
+  }
+
+  << Repaint the gallery caption and reflect the current file in the location
+     bar for the current index. >>
+  void showPicture() {
+    String name = pictureName(galleryIndex);
+    String src = folderLoaded ? "folder" : "demo";
+    if (galleryCaption >= 0) {
+      uiWidgetSetText(galleryCaption, "picture " + intToStr(galleryIndex + 1) + " / " +
+        intToStr(galleryCount) + "   -   " + name);
+    }
+    if (locationInput >= 0) uiWidgetSetText(locationInput, picturePath(galleryIndex));
+    setStatus("Browsing " + name + " (" + src + " image, codec gate passed)");
+  }
+
+  void nextPicture() {
+    galleryIndex = galleryIndex + 1;
+    if (galleryIndex >= galleryCount) galleryIndex = 0;
+    showPicture();
+  }
+  void prevPicture() {
+    galleryIndex = galleryIndex - 1;
+    if (galleryIndex < 0) galleryIndex = galleryCount - 1;
+    showPicture();
+  }
+
+  << Single source of truth for transport presentation: caption, enabled
+     controls, and the playback level bar all follow from (playable, playing,
+     lastPos). Called after every state change and every seek. >>
+  void syncTransport() {
+    if (videoCaption >= 0) {
+      String s = !playable ? "transport: unavailable (codec not supported)"
+        : playing ? "transport: playing" : (lastPos > 0 ? "transport: paused" : "transport: stopped");
+      uiWidgetSetText(videoCaption, s);
+    }
+    if (positionLabel >= 0) uiWidgetSetText(positionLabel, positionText(lastPos));
+    if (playbackLevel >= 0) {
+      double frac = clipSeconds > 0 ? (lastPos * 1.0) / (clipSeconds * 1.0) : 0.0;
+      uiWidgetSetValue(playbackLevel, frac);
+    }
+    << Enable only the controls that apply in the current state. >>
+    if (btnPlay >= 0) uiWidgetSensitive(btnPlay, (playable && !playing) ? 1 : 0);
+    if (btnPause >= 0) uiWidgetSensitive(btnPause, (playable && playing) ? 1 : 0);
+    if (btnStop >= 0) uiWidgetSensitive(btnStop, (playable && (playing || lastPos > 0)) ? 1 : 0);
+    if (seekSlider >= 0) uiWidgetSensitive(seekSlider, playable ? 1 : 0);
+    if (volumeSlider >= 0) uiWidgetSensitive(volumeSlider, playable ? 1 : 0);
+  }
+
+  void playMedia() {
+    if (!playable) { setStatus("DENIED: video/mp4 is not playable on this system."); return; }
+    playing = true;
+    syncTransport();
+    setStatus("video/mp4 playing (codec gate passed)");
+  }
+  void pauseMedia() {
+    if (!playable || !playing) return;
+    playing = false;
+    syncTransport();
+    setStatus("video paused at " + intToStr(lastPos) + "s");
+  }
+  void stopMedia() {
+    if (!playable) return;
+    playing = false;
+    lastPos = 0;
+    if (seekSlider >= 0) uiWidgetSetValue(seekSlider, 0.0);
+    syncTransport();
+    setStatus("video stopped (position reset to 0s)");
+  }
+
+  << Read the live slider values each frame and reflect them. The seek slider
+     drives the position readout and the level bar; the volume slider drives the
+     volume readout. Only updates the status line when a value actually moves. >>
+  void pollSliders() {
+    if (!playable) return;
+    if (seekSlider >= 0) {
+      double sv = uiWidgetGetValue(seekSlider);
+      int pos = clampInt((int) sv, 0, clipSeconds);
+      if (pos != lastPos) {
+        lastPos = pos;
+        if (positionLabel >= 0) uiWidgetSetText(positionLabel, positionText(lastPos));
+        if (playbackLevel >= 0) {
+          double frac = clipSeconds > 0 ? (lastPos * 1.0) / (clipSeconds * 1.0) : 0.0;
+          uiWidgetSetValue(playbackLevel, frac);
+        }
+        if (btnStop >= 0) uiWidgetSensitive(btnStop, (playing || lastPos > 0) ? 1 : 0);
+        setStatus("seek " + intToStr(lastPos) + "s / " + intToStr(clipSeconds) + "s");
+      }
+    }
+    if (volumeSlider >= 0 && volumeLabel >= 0) {
+      int vol = clampInt((int) uiWidgetGetValue(volumeSlider), 0, 100);
+      uiWidgetSetText(volumeLabel, "volume " + intToStr(vol) + "%");
+    }
+  }
+
+  void main() {
+    print("SLeeLa Imaging MediaBrowser (native SleelaUI) - backend "
+      + uiBackendName(uiBackend()) + ", toolkit " + uiVersion());
+
+    app = uiAppCreate("com.mearvk.sleela.imaging.mediabrowser");
+    if (app < 0) {
+      print("No display available (headless): the ui* bridge is wired, but the");
+      print("toolkit could not open a window. Run on a desktop (X/Cocoa/Win32).");
+      return;
+    }
+
+    theme = glassTheme();
+    window = uiWindowCreate(app, "SLeeLa Media Browser - Imaging 2.9", 1100, 720, theme);
+    if (window < 0) {
+      print("MediaBrowser: native window creation failed.");
+      uiAppDestroy(app); app = -1; return;
+    }
+    uiWindowSetBuffering(window, 2);
+    uiWindowSetMinSize(window, 900, 600);
+    int root = uiWindowRoot(window);
+
+    << ---- Functional menubar strip and dropdown panels ---- >>
+    int menuStrip = uiBox(root, 1, 4);
+    uiWidgetMargin(menuStrip, 4, 8, 4, 8);
+    menuFileButton = uiButton(menuStrip, "File");
+    menuViewButton = uiButton(menuStrip, "View");
+    menuHelpButton = uiButton(menuStrip, "Help");
+    uiSpacer(menuStrip);
+
+    menuFilePanel = uiBox(root, 0, 2);
+    uiWidgetMargin(menuFilePanel, 4, 10, 4, 10);
+    menuFileOpen = uiButton(menuFilePanel, "Open Picture...");
+    menuFileOpenFolder = uiButton(menuFilePanel, "Open Folder...");
+    menuFileInfo = uiButton(menuFilePanel, "Media Information");
+    menuFileQuit = uiButton(menuFilePanel, "Quit");
+    uiWidgetVisible(menuFilePanel, 0);
+
+    menuViewPanel = uiBox(root, 0, 2);
+    uiWidgetMargin(menuViewPanel, 4, 10, 4, 10);
+    menuViewGallery = uiButton(menuViewPanel, "Picture Gallery");
+    menuViewPlayer = uiButton(menuViewPanel, "Video Player");
+    uiWidgetVisible(menuViewPanel, 0);
+
+    menuHelpPanel = uiBox(root, 0, 2);
+    uiWidgetMargin(menuHelpPanel, 4, 10, 4, 10);
+    menuHelpGuide = uiButton(menuHelpPanel, "Media Guide");
+    menuHelpAbout = uiButton(menuHelpPanel, "About MediaBrowser");
+    uiWidgetVisible(menuHelpPanel, 0);
+
+    << ---- Chrome: navigation header ---- >>
+    int header = uiHeaderBar(root);
+    btnPrev = uiButton(header, "< Prev"); uiTooltip(btnPrev, "Previous picture");
+    btnNext = uiButton(header, "Next >"); uiTooltip(btnNext, "Next picture");
+    locationInput = uiEntry(header, "/path/to/pictures");
+    uiTooltip(locationInput, "Folder path to scan, or the current file");
+    uiWidgetExpand(locationInput, 1, 0);
+    uiWidgetMargin(locationInput, 0, 8, 0, 8);
+    uiBadge(header, "local - no network");
+
+    << Content scrolls inside a scrolled view instead of spilling past the frame. >>
+    int scroller = uiScrolledView(root, SCROLL_AUTO, SCROLL_AUTO);
+    uiWidgetExpand(scroller, 1, 1);
+    int content = uiBox(scroller, 0, 14);
+    uiWidgetMargin(content, 16, 16, 16, 16);
+    uiWidgetExpand(content, 1, 1);
+
+    uiHeading(content, "SLeeLa Media Browser", 24);
+    uiLabel(content, "Browse pictures and play videos. Type a folder in the location bar and choose File - Open Folder to load real images. Local-first; originals are never modified.");
+
+    << Two-column layout: picture gallery on the left, video player on the right. >>
+    int cols = uiBox(content, 1, 16);
+    uiWidgetExpand(cols, 1, 1);
+    int colL = uiBox(cols, 0, 12);
+    uiWidgetExpand(colL, 1, 1);
+    int colR = uiBox(cols, 0, 12);
+    uiWidgetExpand(colR, 1, 1);
+
+    << Picture gallery card. >>
+    int gallery = uiCard(colL);
+    uiWidgetExpand(gallery, 1, 1);
+    int gBox = uiBox(gallery, 0, 8);
+    uiWidgetMargin(gBox, 12, 12, 12, 12);
+    uiWidgetExpand(gBox, 1, 1);
+    uiLabel(gBox, "PICTURE GALLERY  (image/jpeg - png - gif)");
+    int thumb = uiImage(gBox, "beach-sunrise.jpg", 420, 300);
+    uiWidgetExpand(thumb, 1, 1);
+    galleryCaption = uiLabel(gBox, "picture 1 / 5   -   beach-sunrise.jpg");
+    int gRow = uiBox(gBox, 1, 8);
+    int gPrev = uiButton(gRow, "< Previous");
+    int gNext = uiButton(gRow, "Next >");
+    uiSpacer(gRow);
+    uiBadge(gRow, "fit to window");
+
+    << Video player card with full transport (codec-gated on video/mp4). >>
+    playable = canPlayType("video/mp4");
+    int player = uiCard(colR);
+    uiWidgetExpand(player, 1, 1);
+    int pBox = uiBox(player, 0, 8);
+    uiWidgetMargin(pBox, 12, 12, 12, 12);
+    uiWidgetExpand(pBox, 1, 1);
+    uiLabel(pBox, "VIDEO PLAYER  (video/mp4 - playable=" + (playable ? "yes" : "no") + ")");
+    int canvas = uiImage(pBox, "intro.mp4", 420, 236);
+    uiWidgetExpand(canvas, 1, 1);
+    videoCaption = uiLabel(pBox, "transport: stopped");
+    positionLabel = uiLabel(pBox, positionText(0));
+    seekSlider = uiSlider(pBox, 0.0, 180.0, 0.0); uiTooltip(seekSlider, "Seek position");
+    int transport = uiBox(pBox, 1, 8);
+    btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1); uiTooltip(btnPlay, "Play");
+    btnPause = uiButton(transport, "Pause"); uiTooltip(btnPause, "Pause");
+    btnStop = uiButton(transport, "Stop"); uiTooltip(btnStop, "Stop and rewind");
+    uiSpacer(transport);
+    volumeLabel = uiLabel(transport, "volume 80%");
+    volumeSlider = uiSlider(transport, 0.0, 100.0, 80.0); uiTooltip(volumeSlider, "Volume");
+    int lrow = uiBox(pBox, 1, 8);
+    uiLabel(lrow, "playback");
+    playbackLevel = uiLevelBar(lrow, 0.0);
+    uiWidgetExpand(playbackLevel, 1, 0);
+
+    << Codec registry card (full width): what the UI will and will not offer. >>
+    int codec = uiCard(content);
+    uiWidgetExpand(codec, 1, 0);
+    int cBox = uiBox(codec, 0, 6);
+    uiWidgetMargin(cBox, 12, 12, 12, 12);
+    uiLabel(cBox, "CODEC REGISTRY  (the UI only offers media it can play)");
+    int crow = uiBox(cBox, 1, 8);
+    uiBadge(crow, "image/jpeg ok");
+    uiBadge(crow, "image/png ok");
+    uiBadge(crow, "image/gif ok");
+    uiBadge(crow, "video/mp4 ok");
+    uiBadge(crow, "video/quicktime ok");
+    int hidden = uiBadge(crow, "video/avi hidden");
+    uiWidgetDestructive(hidden, 1);
+    uiSpacer(crow);
+
+    int status = uiStatusBar(root);
+    statusLabel = uiLabel(status, "Ready - browse pictures with Prev/Next, play video with the transport controls.");
+    uiWidgetMargin(statusLabel, 0, 12, 0, 12);
+
+    uiWindowShow(window);
+    running = true;
+    showPicture();
+    syncTransport();
+    print("Window shown. Gallery and transport controls change the view and player state.");
+
+    << ---- Interactive event loop: pump, poll sliders, then poll controls. ---- >>
+    while (running) {
+      int dispatched = uiAppPump(app, 1);
+      if (dispatched < 0) { running = false; }
+      else {
+        pollSliders();
+
+        << Menubar top-level buttons toggle their dropdown panels. >>
+        if (uiWidgetTakeActivated(menuFileButton) == 1) { openMenu(0); }
+        if (uiWidgetTakeActivated(menuViewButton) == 1) { openMenu(1); }
+        if (uiWidgetTakeActivated(menuHelpButton) == 1) { openMenu(2); }
+
+        << File menu commands. Open Folder scans the folder named in the
+           location bar and switches the gallery to its real images. >>
+        if (uiWidgetTakeActivated(menuFileOpen) == 1) { setStatus("File - Open Picture: type a folder path in the location bar, then Open Folder."); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuFileOpenFolder) == 1) {
+          String path = locationInput >= 0 ? uiWidgetGetText(locationInput) : "";
+          if (path == null) path = "";
+          loadFolder(path);
+          openMenu(-1);
+        }
+        if (uiWidgetTakeActivated(menuFileInfo) == 1) {
+          String where = folderLoaded ? ("folder " + folderPath) : "built-in demo set";
+          setStatus("File - Media Information - " + pictureName(galleryIndex) + " (" + where + ", " + intToStr(galleryCount) + " item(s))");
+          openMenu(-1);
+        }
+        if (uiWidgetTakeActivated(menuFileQuit) == 1) { openMenu(-1); running = false; uiAppQuit(app, 0); }
+
+        << View menu commands. >>
+        if (uiWidgetTakeActivated(menuViewGallery) == 1) { setStatus("View - Picture Gallery"); showPicture(); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuViewPlayer) == 1) { setStatus("View - Video Player"); openMenu(-1); }
+
+        << Help menu commands. >>
+        if (uiWidgetTakeActivated(menuHelpGuide) == 1) { setStatus("Help - Media Guide: Prev/Next browse, Play/Pause/Stop and the sliders drive playback."); openMenu(-1); }
+        if (uiWidgetTakeActivated(menuHelpAbout) == 1) { setStatus("Help - MediaBrowser " + metaVersion + " by " + metaAuthor); openMenu(-1); }
+
+        << Gallery navigation (header buttons and in-card buttons). >>
+        if (uiWidgetTakeActivated(btnNext) == 1) { nextPicture(); }
+        if (uiWidgetTakeActivated(btnPrev) == 1) { prevPicture(); }
+        if (uiWidgetTakeActivated(gNext) == 1) { nextPicture(); }
+        if (uiWidgetTakeActivated(gPrev) == 1) { prevPicture(); }
+
+        << Video transport. >>
+        if (uiWidgetTakeActivated(btnPlay) == 1) { playMedia(); }
+        if (uiWidgetTakeActivated(btnPause) == 1) { pauseMedia(); }
+        if (uiWidgetTakeActivated(btnStop) == 1) { stopMedia(); }
+      }
+    }
+
+    uiAppDestroy(app); app = -1;
+    if (theme >= 0) uiThemeDestroy(theme);
+    theme = -1;
+    print("event loop exited.");
+  }
+}

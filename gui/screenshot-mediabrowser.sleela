@@ -1,0 +1,155 @@
+<< screenshot-mediabrowser — headless capture driver for gui/MediaBrowser.
+
+   Builds the exact same SleelaUI widget tree as gui/MediaBrowser.sleela, with
+   pre-filled example state, and pumps a few NON-blocking frames so the layout
+   settles and the SleelaUI software rasterizer paints a full canvas. With the
+   one-time SLEELA_UI_DUMP capture hook in the toolkit (see docs/SCREENSHOT.md)
+   this produces a real, display-less PPM render of the window; convert it with
+   tests/ppm_to_png.py.
+
+   This mirrors tests/screenshot-window.sleela for the main imaging window. It
+   is a capture driver only: it does not loop on input and exits cleanly after
+   a fixed number of frames.
+
+   Reproduce (headless-backend compiler):
+     SLEELA_UI_DUMP=gui/mediabrowser.ppm SLEELA_HOME=/path/to/SLeeLa \
+       /path/to/SLeeLa/impl/build/sleela run gui/screenshot-mediabrowser.sleela
+     python3 tests/ppm_to_png.py gui/mediabrowser.ppm docs/images/media-browser.png >>
+#sleela 2.9
+material;
+class ScreenshotMediaBrowser {
+  int THEME_CUSTOM = 2;
+  int SCROLL_AUTO = 0;
+
+  int rgba(int r, int g, int b, int a) { return r * 16777216 + g * 65536 + b * 256 + a; }
+  int rgb(int r, int g, int b) { return rgba(r, g, b, 255); }
+
+  int glassTheme() {
+    int t = uiThemePreset(THEME_CUSTOM);
+    uiThemeSetBg(t, rgb(14, 23, 38));
+    uiThemeSetSurface(t, rgb(24, 36, 56));
+    uiThemeSetSurfaceHi(t, rgb(36, 52, 78));
+    uiThemeSetChrome(t, rgb(28, 42, 64));
+    uiThemeSetBorder(t, rgba(130, 170, 230, 55));
+    uiThemeSetFg(t, rgb(232, 240, 250));
+    uiThemeSetFgDim(t, rgb(150, 172, 198));
+    uiThemeSetAccent(t, rgb(91, 141, 239));
+    uiThemeSetAccentFg(t, rgb(10, 18, 32));
+    uiThemeSetDanger(t, rgb(228, 122, 122));
+    uiThemeSetRadius(t, 12);
+    uiThemeSetControlHeight(t, 32);
+    return t;
+  }
+
+  void main() {
+    int app = uiAppCreate("com.mearvk.sleela.imaging.mediabrowser.shot");
+    if (app < 0) { print("No display/headless backend available; nothing captured."); return; }
+    int theme = glassTheme();
+    int window = uiWindowCreate(app, "SLeeLa Media Browser - Imaging 2.9", 1100, 720, theme);
+    if (window < 0) { print("window creation failed."); uiAppDestroy(app); return; }
+    uiWindowSetBuffering(window, 2);
+    int root = uiWindowRoot(window);
+
+    << Menubar strip (dropdown panels collapsed, as at rest). >>
+    int menuStrip = uiBox(root, 1, 4);
+    uiWidgetMargin(menuStrip, 4, 8, 4, 8);
+    uiButton(menuStrip, "File");
+    uiButton(menuStrip, "View");
+    uiButton(menuStrip, "Help");
+    uiSpacer(menuStrip);
+
+    << Navigation header. >>
+    int header = uiHeaderBar(root);
+    int hPrev = uiButton(header, "< Prev"); uiTooltip(hPrev, "Previous picture");
+    int hNext = uiButton(header, "Next >"); uiTooltip(hNext, "Next picture");
+    int location = uiEntry(header, "/home/max/Pictures/beach-sunrise.jpg");
+    uiTooltip(location, "Folder path to scan, or the current file");
+    uiWidgetExpand(location, 1, 0);
+    uiWidgetMargin(location, 0, 8, 0, 8);
+    uiBadge(header, "local - no network");
+
+    int scroller = uiScrolledView(root, SCROLL_AUTO, SCROLL_AUTO);
+    uiWidgetExpand(scroller, 1, 1);
+    int content = uiBox(scroller, 0, 14);
+    uiWidgetMargin(content, 16, 16, 16, 16);
+    uiWidgetExpand(content, 1, 1);
+
+    uiHeading(content, "SLeeLa Media Browser", 24);
+    uiLabel(content, "Browse pictures and play videos. Type a folder and choose File - Open Folder to load real images. Local-first; originals are never modified.");
+
+    int cols = uiBox(content, 1, 16);
+    uiWidgetExpand(cols, 1, 1);
+    int colL = uiBox(cols, 0, 12);
+    uiWidgetExpand(colL, 1, 1);
+    int colR = uiBox(cols, 0, 12);
+    uiWidgetExpand(colR, 1, 1);
+
+    << Picture gallery card. >>
+    int gallery = uiCard(colL);
+    uiWidgetExpand(gallery, 1, 1);
+    int gBox = uiBox(gallery, 0, 8);
+    uiWidgetMargin(gBox, 12, 12, 12, 12);
+    uiWidgetExpand(gBox, 1, 1);
+    uiLabel(gBox, "PICTURE GALLERY  (image/jpeg - png - gif)");
+    int thumb = uiImage(gBox, "beach-sunrise.jpg", 420, 300);
+    uiWidgetExpand(thumb, 1, 1);
+    uiLabel(gBox, "picture 1 / 5   -   beach-sunrise.jpg");
+    int gRow = uiBox(gBox, 1, 8);
+    uiButton(gRow, "< Previous");
+    uiButton(gRow, "Next >");
+    uiSpacer(gRow);
+    uiBadge(gRow, "fit to window");
+
+    << Video player card with transport. >>
+    int player = uiCard(colR);
+    uiWidgetExpand(player, 1, 1);
+    int pBox = uiBox(player, 0, 8);
+    uiWidgetMargin(pBox, 12, 12, 12, 12);
+    uiWidgetExpand(pBox, 1, 1);
+    uiLabel(pBox, "VIDEO PLAYER  (video/mp4 - playable=yes)");
+    int canvas = uiImage(pBox, "intro.mp4", 420, 236);
+    uiWidgetExpand(canvas, 1, 1);
+    uiLabel(pBox, "transport: playing");
+    uiLabel(pBox, "position 72s / 180s");
+    int seek = uiSlider(pBox, 0.0, 180.0, 72.0); uiTooltip(seek, "Seek position");
+    int transport = uiBox(pBox, 1, 8);
+    << Playing state: Play is disabled, Pause and Stop are enabled. >>
+    int btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1); uiWidgetSensitive(btnPlay, 0);
+    uiButton(transport, "Pause");
+    uiButton(transport, "Stop");
+    uiSpacer(transport);
+    uiLabel(transport, "volume 80%");
+    int vol = uiSlider(transport, 0.0, 100.0, 80.0); uiTooltip(vol, "Volume");
+    int lrow = uiBox(pBox, 1, 8);
+    uiLabel(lrow, "playback");
+    int lvl = uiLevelBar(lrow, 0.40);
+    uiWidgetExpand(lvl, 1, 0);
+
+    << Codec registry card. >>
+    int codec = uiCard(content);
+    uiWidgetExpand(codec, 1, 0);
+    int cBox = uiBox(codec, 0, 6);
+    uiWidgetMargin(cBox, 12, 12, 12, 12);
+    uiLabel(cBox, "CODEC REGISTRY  (the UI only offers media it can play)");
+    int crow = uiBox(cBox, 1, 8);
+    uiBadge(crow, "image/jpeg ok");
+    uiBadge(crow, "image/png ok");
+    uiBadge(crow, "image/gif ok");
+    uiBadge(crow, "video/mp4 ok");
+    uiBadge(crow, "video/quicktime ok");
+    int hidden = uiBadge(crow, "video/avi hidden");
+    uiWidgetDestructive(hidden, 1);
+    uiSpacer(crow);
+
+    int status = uiStatusBar(root);
+    int statusLabel = uiLabel(status, "Loaded 5 image(s) from /home/max/Pictures - video/mp4 playing (codec gate passed)");
+    uiWidgetMargin(statusLabel, 0, 12, 0, 12);
+
+    uiWindowShow(window);
+    int i = 0;
+    while (i < 3) { uiAppPump(app, 0); i = i + 1; }
+    print("rendered (set SLEELA_UI_DUMP to capture a PPM)");
+    uiAppDestroy(app);
+    if (theme >= 0) uiThemeDestroy(theme);
+  }
+}
