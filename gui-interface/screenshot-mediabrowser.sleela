@@ -55,18 +55,20 @@ class ScreenshotMediaBrowser {
     uiWidgetMargin(menuStrip, 4, 8, 4, 8);
     uiButton(menuStrip, "File");
     uiButton(menuStrip, "View");
+    uiButton(menuStrip, "Stream");
     uiButton(menuStrip, "Help");
     uiSpacer(menuStrip);
 
-    << Navigation header. >>
+    << Navigation header. The location bar holds a recognized YouTube URL to
+       show the stream state. >>
     int header = uiHeaderBar(root);
     int hPrev = uiButton(header, "< Prev"); uiTooltip(hPrev, "Previous picture");
     int hNext = uiButton(header, "Next >"); uiTooltip(hNext, "Next picture");
-    int location = uiEntry(header, "/home/max/Pictures/beach-sunrise.jpg");
-    uiTooltip(location, "Folder path to scan, or the current file");
+    int location = uiEntry(header, "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+    uiTooltip(location, "Folder path to scan, a file, or a YouTube URL");
     uiWidgetExpand(location, 1, 0);
     uiWidgetMargin(location, 0, 8, 0, 8);
-    uiBadge(header, "local - no network");
+    uiBadge(header, "local - browser handoff");
 
     int scroller = uiScrolledView(root, SCROLL_AUTO, SCROLL_AUTO);
     uiWidgetExpand(scroller, 1, 1);
@@ -109,21 +111,31 @@ class ScreenshotMediaBrowser {
     uiLabel(pBox, "VIDEO PLAYER  (video/mp4 - playable=yes)");
     int canvas = uiImage(pBox, "intro.mp4", 420, 236);
     uiWidgetExpand(canvas, 1, 1);
-    uiLabel(pBox, "transport: playing");
-    uiLabel(pBox, "position 72s / 180s");
-    int seek = uiSlider(pBox, 0.0, 180.0, 72.0); uiTooltip(seek, "Seek position");
+    uiLabel(pBox, "YouTube stream: open in browser to play");
+    uiLabel(pBox, "position 0s / 180s");
+    int seek = uiSlider(pBox, 0.0, 180.0, 0.0); uiTooltip(seek, "Seek position");
     int transport = uiBox(pBox, 1, 8);
-    << Playing state: Play is disabled, Pause and Stop are enabled. >>
+    << Stream mode: the in-app transport is gated off (video is not decoded in
+       the canvas); playback is delegated to the browser via the stream row. >>
     int btnPlay = uiButton(transport, "Play"); uiWidgetSuggested(btnPlay, 1); uiWidgetSensitive(btnPlay, 0);
-    uiButton(transport, "Pause");
-    uiButton(transport, "Stop");
+    int btnPause = uiButton(transport, "Pause"); uiWidgetSensitive(btnPause, 0);
+    int btnStop = uiButton(transport, "Stop"); uiWidgetSensitive(btnStop, 0);
     uiSpacer(transport);
     uiLabel(transport, "volume 80%");
-    int vol = uiSlider(transport, 0.0, 100.0, 80.0); uiTooltip(vol, "Volume");
+    int vol = uiSlider(transport, 0.0, 100.0, 80.0); uiTooltip(vol, "Volume"); uiWidgetSensitive(vol, 0);
     int lrow = uiBox(pBox, 1, 8);
     uiLabel(lrow, "playback");
-    int lvl = uiLevelBar(lrow, 0.40);
+    int lvl = uiLevelBar(lrow, 0.0);
     uiWidgetExpand(lvl, 1, 0);
+
+    << YouTube stream row: recognized-video caption + browser handoff. >>
+    uiSeparator(pBox, 1);
+    uiLabel(pBox, "stream: youtube id dQw4w9WgXcQ");
+    int srow = uiBox(pBox, 1, 8);
+    int btnStreamOpen = uiButton(srow, "Open in browser"); uiWidgetSuggested(btnStreamOpen, 1);
+    uiTooltip(btnStreamOpen, "Play the recognized YouTube video in your browser");
+    uiSpacer(srow);
+    uiBadge(srow, "stream = browser handoff");
 
     << Codec registry card. >>
     int codec = uiCard(content);
@@ -142,7 +154,7 @@ class ScreenshotMediaBrowser {
     uiSpacer(crow);
 
     int status = uiStatusBar(root);
-    int statusLabel = uiLabel(status, "Loaded 5 image(s) from /home/max/Pictures - video/mp4 playing (codec gate passed)");
+    int statusLabel = uiLabel(status, "YouTube video dQw4w9WgXcQ recognized. Open in browser to play (in-app video is not decoded).");
     uiWidgetMargin(statusLabel, 0, 12, 0, 12);
 
     uiWindowShow(window);
