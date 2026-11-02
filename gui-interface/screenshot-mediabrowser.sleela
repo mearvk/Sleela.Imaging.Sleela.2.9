@@ -160,7 +160,13 @@ class ScreenshotMediaBrowser {
     uiWindowShow(window);
     int i = 0;
     while (i < 3) { uiAppPump(app, 0); i = i + 1; }
-    print("rendered (set SLEELA_UI_DUMP to capture a PPM)");
+    << This is a ONE-SHOT capture driver by design: it paints a few non-blocking
+       frames and exits immediately (it never enters an interactive event loop).
+       Say so plainly so an interactive run does not look like a GUI that
+       "disposed itself". For a window that stays open, run MediaBrowser.sleela. >>
+    print("rendered one frame (one-shot screenshot driver -- exits immediately by design).");
+    print("  * To CAPTURE it: set SLEELA_UI_DUMP=path.ppm before running, then tests/ppm_to_png.py.");
+    print("  * For an INTERACTIVE window that stays open, run gui-interface/MediaBrowser.sleela instead.");
     uiAppDestroy(app);
     if (theme >= 0) uiThemeDestroy(theme);
   }

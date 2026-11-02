@@ -31,10 +31,13 @@ rasterizer with no display server — produced headlessly from
   (the same logic that `MediaBrowser` inlines). It mirrors the project's
   `src/ImagingFileSystem.sleela` provider style and carries the Metadata Class
   metapattern.
-- `screenshot-mediabrowser.sleela` — a capture driver that builds the identical
-  widget tree with pre-filled state and pumps a few non-blocking frames so a
-  display-less run can render a real screenshot. Mirrors the repo's
-  `tests/screenshot-window.sleela`.
+- `screenshot-mediabrowser.sleela` — a **one-shot capture driver**, not an
+  interactive app. It builds the identical widget tree with pre-filled state and
+  pumps a few non-blocking frames so a display-less run can render a real
+  screenshot, then **exits immediately by design** (it never enters an event
+  loop). If you run it expecting a persistent window it will look like the GUI
+  "disposed itself" — that is expected; run `MediaBrowser.sleela` for an
+  interactive window. Mirrors the repo's `tests/screenshot-window.sleela`.
 
 ## Features
 
@@ -97,6 +100,11 @@ Requires the source-built `sleela` compiler (syntax 2.9) from
 SLEELA=/path/to/SLeeLa
 SLEELA_HOME=$SLEELA $SLEELA/impl/build/sleela run gui-interface/MediaBrowser.sleela
 ```
+
+> **Note.** Run **`MediaBrowser.sleela`** for an interactive window that stays
+> open until you quit it. Do **not** run `screenshot-mediabrowser.sleela` for
+> this — that script is a one-shot screenshot driver and exits as soon as it has
+> painted a frame (see *Reproduce the screenshot* below).
 
 ## Reproduce the screenshot (headless)
 
