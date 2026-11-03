@@ -60,14 +60,41 @@ class MediaBrowser {
   int btnPlay = -1; int btnPause = -1; int btnStop = -1;
   int btnPrev = -1; int btnNext = -1; int galleryCaption = -1;
 
-  << Menubar strip and its dropdown panels (built from existing ui* widgets). >>
+  << Menubar strip and its dropdown panels (built from existing ui* widgets).
+     The 19 menu widget handles are packed into one first-class int[] array so
+     the class stays within the VM's 64-field-per-layout limit. Each handle is
+     reached through a named accessor (mFileBtn(), mFilePanel(), ...) that
+     returns the stored handle for a fixed index, so every call site reads just
+     as the named fields did. The index legend (what each slot holds) is:
+       0 File button     1 File panel    2 Open Picture   3 Open Folder
+       4 Media Info      5 Quit          6 View button    7 View panel
+       8 Picture Gallery 9 Video Player  10 Help button    11 Help panel
+       12 Media Guide    13 About        14 Stream button  15 Stream panel
+       16 Load URL       17 Open browser 18 Clear stream >>
   int openMenuIndex = -1;
-  int menuFileButton = -1; int menuFilePanel = -1;
-  int menuFileOpen = -1; int menuFileOpenFolder = -1; int menuFileInfo = -1; int menuFileQuit = -1;
-  int menuViewButton = -1; int menuViewPanel = -1;
-  int menuViewGallery = -1; int menuViewPlayer = -1;
-  int menuHelpButton = -1; int menuHelpPanel = -1;
-  int menuHelpGuide = -1; int menuHelpAbout = -1;
+  int[] menuH;
+
+  << Typed accessors for the packed menu handles (methods, not fields, so they
+     cost no layout slots). Each returns the live widget handle for its slot. >>
+  int mFileBtn() { return menuH[0]; }
+  int mFilePanel() { return menuH[1]; }
+  int mFileOpen() { return menuH[2]; }
+  int mFileOpenFolder() { return menuH[3]; }
+  int mFileInfo() { return menuH[4]; }
+  int mFileQuit() { return menuH[5]; }
+  int mViewBtn() { return menuH[6]; }
+  int mViewPanel() { return menuH[7]; }
+  int mViewGallery() { return menuH[8]; }
+  int mViewPlayer() { return menuH[9]; }
+  int mHelpBtn() { return menuH[10]; }
+  int mHelpPanel() { return menuH[11]; }
+  int mHelpGuide() { return menuH[12]; }
+  int mHelpAbout() { return menuH[13]; }
+  int mStreamBtn() { return menuH[14]; }
+  int mStreamPanel() { return menuH[15]; }
+  int mStreamLoad() { return menuH[16]; }
+  int mStreamOpen() { return menuH[17]; }
+  int mStreamClear() { return menuH[18]; }
 
   << Picture gallery state. When no on-disk folder is loaded the browser pages
      through a small fixed demo set; a real-folder scan (inlined below, the same
@@ -98,10 +125,9 @@ class MediaBrowser {
   String streamId = "";
   String streamUrl = "";
   String streamParseDir = "";
-  << UI handles for the stream row (Open in browser). >>
+  << UI handles for the stream row (Open in browser). The stream menu handles
+     (button, panel, Load/Open/Clear) live in the packed menuH array above. >>
   int btnStreamOpen = -1; int streamCaption = -1;
-  int menuStreamButton = -1; int menuStreamPanel = -1;
-  int menuStreamLoad = -1; int menuStreamOpen = -1; int menuStreamClear = -1;
 
   << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
   String metaVersion = "1.3.0";
@@ -325,10 +351,10 @@ class MediaBrowser {
   void openMenu(int which) {
     int next = openMenuIndex == which ? -1 : which;
     openMenuIndex = next;
-    uiWidgetVisible(menuFilePanel, next == 0 ? 1 : 0);
-    uiWidgetVisible(menuViewPanel, next == 1 ? 1 : 0);
-    uiWidgetVisible(menuStreamPanel, next == 2 ? 1 : 0);
-    uiWidgetVisible(menuHelpPanel, next == 3 ? 1 : 0);
+    uiWidgetVisible(mFilePanel(), next == 0 ? 1 : 0);
+    uiWidgetVisible(mViewPanel(), next == 1 ? 1 : 0);
+    uiWidgetVisible(mStreamPanel(), next == 2 ? 1 : 0);
+    uiWidgetVisible(mHelpPanel(), next == 3 ? 1 : 0);
   }
 
   << Repaint the gallery caption and reflect the current file in the location
@@ -496,41 +522,45 @@ class MediaBrowser {
     uiWindowSetMinSize(window, 900, 600);
     int root = uiWindowRoot(window);
 
+    << Allocate the packed menu-handle table (see the index legend by the field
+       declaration). Every slot is filled below as its widget is created. >>
+    menuH = new int[19];
+
     << ---- Functional menubar strip and dropdown panels ---- >>
     int menuStrip = uiBox(root, 1, 4);
     uiWidgetMargin(menuStrip, 4, 8, 4, 8);
-    menuFileButton = uiButton(menuStrip, "File");
-    menuViewButton = uiButton(menuStrip, "View");
-    menuStreamButton = uiButton(menuStrip, "Stream");
-    menuHelpButton = uiButton(menuStrip, "Help");
+    menuH[0] = uiButton(menuStrip, "File");
+    menuH[6] = uiButton(menuStrip, "View");
+    menuH[14] = uiButton(menuStrip, "Stream");
+    menuH[10] = uiButton(menuStrip, "Help");
     uiSpacer(menuStrip);
 
-    menuFilePanel = uiBox(root, 0, 2);
-    uiWidgetMargin(menuFilePanel, 4, 10, 4, 10);
-    menuFileOpen = uiButton(menuFilePanel, "Open Picture...");
-    menuFileOpenFolder = uiButton(menuFilePanel, "Open Folder...");
-    menuFileInfo = uiButton(menuFilePanel, "Media Information");
-    menuFileQuit = uiButton(menuFilePanel, "Quit");
-    uiWidgetVisible(menuFilePanel, 0);
+    menuH[1] = uiBox(root, 0, 2);
+    uiWidgetMargin(mFilePanel(), 4, 10, 4, 10);
+    menuH[2] = uiButton(mFilePanel(), "Open Picture...");
+    menuH[3] = uiButton(mFilePanel(), "Open Folder...");
+    menuH[4] = uiButton(mFilePanel(), "Media Information");
+    menuH[5] = uiButton(mFilePanel(), "Quit");
+    uiWidgetVisible(mFilePanel(), 0);
 
-    menuViewPanel = uiBox(root, 0, 2);
-    uiWidgetMargin(menuViewPanel, 4, 10, 4, 10);
-    menuViewGallery = uiButton(menuViewPanel, "Picture Gallery");
-    menuViewPlayer = uiButton(menuViewPanel, "Video Player");
-    uiWidgetVisible(menuViewPanel, 0);
+    menuH[7] = uiBox(root, 0, 2);
+    uiWidgetMargin(mViewPanel(), 4, 10, 4, 10);
+    menuH[8] = uiButton(mViewPanel(), "Picture Gallery");
+    menuH[9] = uiButton(mViewPanel(), "Video Player");
+    uiWidgetVisible(mViewPanel(), 0);
 
-    menuStreamPanel = uiBox(root, 0, 2);
-    uiWidgetMargin(menuStreamPanel, 4, 10, 4, 10);
-    menuStreamLoad = uiButton(menuStreamPanel, "Load URL from location bar");
-    menuStreamOpen = uiButton(menuStreamPanel, "Open in browser");
-    menuStreamClear = uiButton(menuStreamPanel, "Clear stream");
-    uiWidgetVisible(menuStreamPanel, 0);
+    menuH[15] = uiBox(root, 0, 2);
+    uiWidgetMargin(mStreamPanel(), 4, 10, 4, 10);
+    menuH[16] = uiButton(mStreamPanel(), "Load URL from location bar");
+    menuH[17] = uiButton(mStreamPanel(), "Open in browser");
+    menuH[18] = uiButton(mStreamPanel(), "Clear stream");
+    uiWidgetVisible(mStreamPanel(), 0);
 
-    menuHelpPanel = uiBox(root, 0, 2);
-    uiWidgetMargin(menuHelpPanel, 4, 10, 4, 10);
-    menuHelpGuide = uiButton(menuHelpPanel, "Media Guide");
-    menuHelpAbout = uiButton(menuHelpPanel, "About MediaBrowser");
-    uiWidgetVisible(menuHelpPanel, 0);
+    menuH[11] = uiBox(root, 0, 2);
+    uiWidgetMargin(mHelpPanel(), 4, 10, 4, 10);
+    menuH[12] = uiButton(mHelpPanel(), "Media Guide");
+    menuH[13] = uiButton(mHelpPanel(), "About MediaBrowser");
+    uiWidgetVisible(mHelpPanel(), 0);
 
     << ---- Chrome: navigation header ---- >>
     int header = uiHeaderBar(root);
@@ -646,46 +676,46 @@ class MediaBrowser {
         pollSliders();
 
         << Menubar top-level buttons toggle their dropdown panels. >>
-        if (uiWidgetTakeActivated(menuFileButton) == 1) { openMenu(0); }
-        if (uiWidgetTakeActivated(menuViewButton) == 1) { openMenu(1); }
-        if (uiWidgetTakeActivated(menuStreamButton) == 1) { openMenu(2); }
-        if (uiWidgetTakeActivated(menuHelpButton) == 1) { openMenu(3); }
+        if (uiWidgetTakeActivated(mFileBtn()) == 1) { openMenu(0); }
+        if (uiWidgetTakeActivated(mViewBtn()) == 1) { openMenu(1); }
+        if (uiWidgetTakeActivated(mStreamBtn()) == 1) { openMenu(2); }
+        if (uiWidgetTakeActivated(mHelpBtn()) == 1) { openMenu(3); }
 
         << File menu commands. Open Folder scans the folder named in the
            location bar and switches the gallery to its real images. >>
-        if (uiWidgetTakeActivated(menuFileOpen) == 1) { setStatus("File - Open Picture: type a folder path in the location bar, then Open Folder."); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuFileOpenFolder) == 1) {
+        if (uiWidgetTakeActivated(mFileOpen()) == 1) { setStatus("File - Open Picture: type a folder path in the location bar, then Open Folder."); openMenu(-1); }
+        if (uiWidgetTakeActivated(mFileOpenFolder()) == 1) {
           String path = locationInput >= 0 ? uiWidgetGetText(locationInput) : "";
           if (path == null) path = "";
           loadFolder(path);
           openMenu(-1);
         }
-        if (uiWidgetTakeActivated(menuFileInfo) == 1) {
+        if (uiWidgetTakeActivated(mFileInfo()) == 1) {
           String where = folderLoaded ? ("folder " + folderPath) : "built-in demo set";
           setStatus("File - Media Information - " + pictureName(galleryIndex) + " (" + where + ", " + intToStr(galleryCount) + " item(s))");
           openMenu(-1);
         }
-        if (uiWidgetTakeActivated(menuFileQuit) == 1) { openMenu(-1); running = false; uiAppQuit(app, 0); }
+        if (uiWidgetTakeActivated(mFileQuit()) == 1) { openMenu(-1); running = false; uiAppQuit(app, 0); }
 
         << View menu commands. >>
-        if (uiWidgetTakeActivated(menuViewGallery) == 1) { setStatus("View - Picture Gallery"); showPicture(); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuViewPlayer) == 1) { setStatus("View - Video Player"); openMenu(-1); }
+        if (uiWidgetTakeActivated(mViewGallery()) == 1) { setStatus("View - Picture Gallery"); showPicture(); openMenu(-1); }
+        if (uiWidgetTakeActivated(mViewPlayer()) == 1) { setStatus("View - Video Player"); openMenu(-1); }
 
         << Stream (YouTube) menu commands. Load reads the location bar; Open
            hands the recognized video to the browser; Clear restores the local
            player. >>
-        if (uiWidgetTakeActivated(menuStreamLoad) == 1) {
+        if (uiWidgetTakeActivated(mStreamLoad()) == 1) {
           String url = locationInput >= 0 ? uiWidgetGetText(locationInput) : "";
           if (url == null) url = "";
           loadStream(url);
           openMenu(-1);
         }
-        if (uiWidgetTakeActivated(menuStreamOpen) == 1) { openStream(); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuStreamClear) == 1) { clearStream(); openMenu(-1); }
+        if (uiWidgetTakeActivated(mStreamOpen()) == 1) { openStream(); openMenu(-1); }
+        if (uiWidgetTakeActivated(mStreamClear()) == 1) { clearStream(); openMenu(-1); }
 
         << Help menu commands. >>
-        if (uiWidgetTakeActivated(menuHelpGuide) == 1) { setStatus("Help - Media Guide: Prev/Next browse, Play/Pause/Stop and the sliders drive playback."); openMenu(-1); }
-        if (uiWidgetTakeActivated(menuHelpAbout) == 1) { setStatus("Help - MediaBrowser " + metaVersion + " by " + metaAuthor); openMenu(-1); }
+        if (uiWidgetTakeActivated(mHelpGuide()) == 1) { setStatus("Help - Media Guide: Prev/Next browse, Play/Pause/Stop and the sliders drive playback."); openMenu(-1); }
+        if (uiWidgetTakeActivated(mHelpAbout()) == 1) { setStatus("Help - MediaBrowser " + metaVersion + " by " + metaAuthor); openMenu(-1); }
 
         << Gallery navigation (header buttons and in-card buttons). >>
         if (uiWidgetTakeActivated(btnNext) == 1) { nextPicture(); }
