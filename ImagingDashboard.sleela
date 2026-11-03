@@ -1,0 +1,208 @@
+<< ImagingDashboard — native SleelaUI review dashboard for SLeeLa Imaging 2.9.
+
+   A second, top-level GUI entry point that complements the configuration
+   workspace in src/ui/ImagingWindow.sleela. Where ImagingWindow collects the
+   six directory roots and the safety toggles, this dashboard presents the
+   RESULT of a run in a read-only review view: the current session state, the
+   planned / published / skipped / failed counters, and the full human-readable
+   reviewed-plan report produced by ImagingSession.reportText().
+
+   The dashboard owns no destructive capability of its own. It drives an in-VM
+   ImagingSession exactly like the main window (Preview is read-only; Apply
+   requires a fresh matching preview, dry run off, SHA-256 on, and explicit
+   confirmation), and otherwise only READS and displays session state. No
+   network, telemetry, key upload, database logging, or source deletion is
+   present, consistent with the protected coding analysis.
+
+   Note: this class requires a native display to run (uiAppCreate). The headless
+   ImagingOrganizer demo and ImagingApplication cover display-less execution. >>
+#sleela 2.9
+material;
+class ImagingDashboard {
+  int app = -1; int theme = -1; int window = -1;
+  int stateLabel = -1; int countsLabel = -1; int reportView = -1; int statusLabel = -1;
+  int sourceInput = -1; int imageInput = -1; int movInput = -1;
+  int mp4Input = -1; int mpegInput = -1; int aviInput = -1;
+  int recursiveCheck = -1; int digestCheck = -1; int confirmCheck = -1;
+  int previewButton = -1; int applyButton = -1; int refreshButton = -1; int quitButton = -1;
+  boolean running = false; boolean previewReady = false;
+  ImagingSession session;
+
+  << ---- Descriptive metadata (version 1.11 nested-friendly accessors) ---- >>
+  String metaVersion = "1.0.0";
+  int metaId = 2910;
+  String metaAuthor = "Max Rupplin / MEARVK LLC";
+  String metaDate = "2026-11-01";
+  String metaCopyright = "MEARVK LLC";
+  String metaTrademark = "none";
+  String metaCorporation = "MEARVK LLC";
+  String metaOrigin = "International";
+  String metaBirthDate = "2026-11-01";
+  int metaScienceRating = 6;
+  String metaNationalSchedule = "none";
+  String getMetaVersion() { return metaVersion; }
+  int getMetaId() { return metaId; }
+  String getAuthor() { return metaAuthor; }
+  String getOrigin() { return metaOrigin; }
+  String getNationalSchedule() { return metaNationalSchedule; }
+
+  void setStatus(String message) { if (statusLabel >= 0) uiWidgetSetText(statusLabel, message); }
+  String safeText(int widget) { String value = uiWidgetGetText(widget); return value == null ? "" : value; }
+
+  << Collect the six roots and the safety toggles into a typed config. Dry run
+     is held off here because the dashboard's Apply path already gates on a
+     fresh matching preview plus explicit confirmation; Preview itself never
+     writes regardless of this flag. >>
+  ImagingConfig readConfig() {
+    ImagingConfig cfg = new ImagingConfig();
+    cfg.sourceDirectory = safeText(sourceInput);
+    cfg.imageDestination = safeText(imageInput);
+    cfg.movDestination = safeText(movInput);
+    cfg.mp4Destination = safeText(mp4Input);
+    cfg.mpegDestination = safeText(mpegInput);
+    cfg.aviDestination = safeText(aviInput);
+    cfg.recursive = (uiWidgetGetToggle(recursiveCheck) == 1);
+    cfg.verifyDigest = (uiWidgetGetToggle(digestCheck) == 1);
+    cfg.dryRun = false;
+    cfg.preserveSource = true; cfg.followSymbolicLinks = false;
+    cfg.allowNetwork = false; cfg.deleteSource = false;
+    return cfg;
+  }
+
+  << Build the counts line from the live session (0 when unconfigured). >>
+  String countsText() {
+    if (session == null) return "planned 0   published 0   skipped 0   failed 0";
+    return "planned " + session.planned() + "   published " + session.published() +
+      "   skipped " + session.skipped() + "   failed " + session.failed();
+  }
+
+  << Push the latest session state, counters, and report into the read-only
+     display widgets. Safe to call at any time; shows a placeholder before the
+     first preview. >>
+  void refreshView() {
+    if (stateLabel >= 0) {
+      String s = session == null ? "idle" : session.stateName();
+      uiWidgetSetText(stateLabel, "State: " + s);
+    }
+    if (countsLabel >= 0) uiWidgetSetText(countsLabel, countsText());
+    if (reportView >= 0) {
+      String report = (session != null && previewReady) ? session.reportText()
+        : "No reviewed plan yet. Enter the six roots and select Preview (read-only).";
+      uiWidgetSetText(reportView, report);
+    }
+  }
+
+  void updateApplySensitivity() {
+    boolean allowed = previewReady && uiWidgetGetToggle(confirmCheck) == 1 &&
+      uiWidgetGetToggle(digestCheck) == 1;
+    uiWidgetSensitive(applyButton, allowed ? 1 : 0);
+  }
+
+  void main() {
+    app = uiAppCreate("com.mearvk.sleela.imaging.dashboard");
+    if (app < 0) { print("SLeeLa Imaging Dashboard: SleelaUI could not open a native display."); return; }
+    theme = uiThemePreset(3);
+    window = uiWindowCreate(app, "SLeeLa Imaging 2.9 — Review Dashboard", 1080, 860, theme);
+    if (window < 0) { print("SLeeLa Imaging Dashboard: native window creation failed."); uiAppDestroy(app); app = -1; return; }
+    uiWindowSetBuffering(window, 2); uiWindowSetMinSize(window, 860, 680);
+    int root = uiWindowRoot(window); int page = uiBox(root, 0, 12);
+    uiWidgetMargin(page, 16, 16, 16, 16); uiWidgetExpand(page, 1, 1);
+    uiHeading(page, "SLeeLa Imaging — Review Dashboard", 26);
+    uiLabel(page, "Read-only review of the planned run. Originals are always preserved.");
+
+    int sourceFrame = uiFrame(page, "Source and destinations");
+    int form = uiBox(sourceFrame, 0, 8); uiWidgetMargin(form, 10, 10, 10, 10);
+    uiLabel(form, "Source directory"); sourceInput = uiEntry(form, "/path/to/source");
+    uiLabel(form, "Images destination"); imageInput = uiEntry(form, "/path/to/organized/Images");
+    uiLabel(form, "MOV destination"); movInput = uiEntry(form, "/path/to/organized/Videos/MOV");
+    uiLabel(form, "MP4 / M4V destination"); mp4Input = uiEntry(form, "/path/to/organized/Videos/MP4");
+    uiLabel(form, "MPEG / MPG destination"); mpegInput = uiEntry(form, "/path/to/organized/Videos/MPEG");
+    uiLabel(form, "AVI destination"); aviInput = uiEntry(form, "/path/to/organized/Videos/AVI");
+
+    int optionsFrame = uiFrame(page, "Review and safety");
+    int options = uiBox(optionsFrame, 0, 6); uiWidgetMargin(options, 10, 10, 10, 10);
+    recursiveCheck = uiCheckBox(options, "Scan subdirectories recursively", 0);
+    digestCheck = uiCheckBox(options, "Require SHA-256 verification", 1);
+    confirmCheck = uiCheckBox(options, "I reviewed the plan and explicitly confirm", 0);
+
+    int summaryFrame = uiFrame(page, "Run summary");
+    int summary = uiBox(summaryFrame, 0, 6); uiWidgetMargin(summary, 10, 10, 10, 10);
+    stateLabel = uiLabel(summary, "State: idle");
+    countsLabel = uiLabel(summary, "planned 0   published 0   skipped 0   failed 0");
+
+    int reportFrame = uiFrame(page, "Reviewed plan report");
+    int reportBox = uiBox(reportFrame, 0, 6); uiWidgetMargin(reportBox, 10, 10, 10, 10);
+    uiWidgetExpand(reportBox, 1, 1);
+    reportView = uiInfoBar(reportBox, "No reviewed plan yet. Enter the six roots and select Preview (read-only).", 1);
+    uiWidgetSizeRequest(reportView, 0, 220); uiWidgetExpand(reportView, 1, 1);
+
+    int actions = uiBox(page, 1, 10);
+    previewButton = uiButton(actions, "Preview"); uiWidgetSuggested(previewButton, 1);
+    applyButton = uiButton(actions, "Apply reviewed plan"); uiWidgetSensitive(applyButton, 0);
+    refreshButton = uiButton(actions, "Refresh view");
+    quitButton = uiButton(actions, "Quit");
+
+    statusLabel = uiInfoBar(page, "Ready. Configure six existing, distinct directories, then Preview.", 1);
+    uiWidgetSizeRequest(statusLabel, 0, 48);
+    uiLabel(page, "Privacy: no network, telemetry, key upload, database logging, or source deletion.");
+
+    session = new ImagingSession(); uiWindowShow(window); running = true;
+    refreshView();
+
+    while (running) {
+      int dispatched = uiAppPump(app, 1);
+      if (dispatched < 0) { setStatus("UI event provider reported an error. No media operation was started."); running = false; }
+
+      if (uiWidgetTakeActivated(previewButton) == 1) {
+        ImagingConfig cfg = readConfig(); previewReady = false; uiWidgetSensitive(applyButton, 0);
+        if (!cfg.isConfigured()) setStatus("BLOCKED: complete all six source and destination paths.");
+        else if (!cfg.verifyDigest) setStatus("BLOCKED: SHA-256 verification must remain enabled.");
+        else {
+          session.configure(cfg);
+          String result = session.preview();
+          if (session.isPreviewReady()) {
+            previewReady = true;
+            setStatus(result + " Review the plan below, then confirm to apply.");
+          } else setStatus(result);
+        }
+        refreshView();
+        updateApplySensitivity();
+      }
+
+      if (uiWidgetTakeActivated(confirmCheck) == 1 || uiWidgetTakeActivated(digestCheck) == 1) {
+        ImagingConfig current = readConfig();
+        if (previewReady && !session.sameConfiguration(current)) {
+          previewReady = false; setStatus("Configuration changed. Preview again before applying.");
+          refreshView();
+        }
+        updateApplySensitivity();
+      }
+
+      if (uiWidgetTakeActivated(refreshButton) == 1) {
+        refreshView();
+        setStatus("View refreshed from the current session state.");
+      }
+
+      if (uiWidgetTakeActivated(applyButton) == 1) {
+        ImagingConfig current = readConfig();
+        if (!previewReady || !session.sameConfiguration(current)) {
+          previewReady = false;
+          setStatus("DENIED: configuration differs from the reviewed preview. Preview again and confirm.");
+        } else if (!current.verifyDigest || uiWidgetGetToggle(confirmCheck) != 1) {
+          setStatus("DENIED: retain SHA-256 verification and explicitly confirm the reviewed plan.");
+        } else {
+          String result = session.requestApply(true);
+          previewReady = false;
+          setStatus(result);
+        }
+        refreshView();
+        uiWidgetSensitive(applyButton, 0);
+      }
+
+      if (uiWidgetTakeActivated(quitButton) == 1) { running = false; uiAppQuit(app, 0); }
+    }
+    uiAppDestroy(app); app = -1;
+    if (theme >= 0) uiThemeDestroy(theme);
+    theme = -1;
+  }
+}
