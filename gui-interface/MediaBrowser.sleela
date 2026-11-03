@@ -59,6 +59,9 @@ class MediaBrowser {
   int seekSlider = -1; int volumeSlider = -1; int playbackLevel = -1;
   int btnPlay = -1; int btnPause = -1; int btnStop = -1;
   int btnPrev = -1; int btnNext = -1; int galleryCaption = -1;
+  << Gallery image widget: its source is updated to the current file path so the
+     SleelaUI Image widget decodes and shows the real picture (jpg/jpeg/png). >>
+  int thumb = -1;
 
   << Menubar strip and its dropdown panels (built from existing ui* widgets).
      The 19 menu widget handles are packed into one first-class int[] array so
@@ -156,7 +159,29 @@ class MediaBrowser {
      The UI never offers media it cannot play. >>
   boolean canPlayType(String mime) {
     return mime == "image/jpeg" || mime == "image/png" || mime == "image/gif" ||
-      mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav";
+      mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav" ||
+      mime == "video/x-msvideo";
+  }
+
+  << AVI is a recognized video container but SleelaUI has no in-app video
+     decoder or surface, so (like YouTube streams) AVI is played by handing the
+     file to the system's external player rather than decoding it in-app. This
+     reports whether a type is a recognized external-playback video. >>
+  boolean isExternalVideo(String mime) {
+    return mime == "video/x-msvideo";
+  }
+
+  << Map a lowercase file extension to a MIME type for the codec gate. Unknown
+     extensions return "" (treated as not playable). >>
+  String mimeForExt(String ext) {
+    if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+    if (ext == "png") return "image/png";
+    if (ext == "gif") return "image/gif";
+    if (ext == "mp4" || ext == "m4v") return "video/mp4";
+    if (ext == "mov") return "video/quicktime";
+    if (ext == "avi") return "video/x-msvideo";
+    if (ext == "wav") return "audio/wav";
+    return "";
   }
 
   << ---- Inlined read-only folder scanner (mirrors gui-interface/GalleryScanner.sleela).
@@ -254,6 +279,55 @@ class MediaBrowser {
     return readField(f);
   }
 
+  << ---- Native file-open dialog ----
+     SleelaUI ships no file-chooser widget, so the File menu opens the real
+     native desktop picker by launching zenity (GNOME/GTK) or kdialog (KDE)
+     through the VM osRun built-in, and reads the chosen path back from a scalar
+     field file (no trailing newline) -- the same fixed-POSIX, scalar-field
+     technique the folder scanner uses. Returns the selected absolute path, or
+     "" if the user cancelled or no picker is installed. Read-only: it only
+     learns a path; it never creates, moves, or deletes media. >>
+  String openFileDialog(String title) {
+    String base = osTempDir() + "/sleela-mb-pick";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-mb-pick"; osMakeDir(base); }
+    String dir = base + "/run-" + timeUtcMillis();
+    osMakeDir(dir);
+    if (osIsDir(dir) != 1) return "";
+    String f = dir + "/path.txt";
+    << $1 is the dialog title, passed positionally so it can never alter the
+       command structure. Try zenity first, then kdialog; the chosen path is
+       written with no trailing newline, empty on cancel or no picker. >>
+    osRun("sh -c '"
+      + "if command -v zenity >/dev/null 2>&1; then "
+      + "  zenity --file-selection --title=\"$1\" 2>/dev/null; "
+      + "elif command -v kdialog >/dev/null 2>&1; then "
+      + "  kdialog --getopenfilename \"$HOME\" --title \"$1\" 2>/dev/null; "
+      + "fi | head -1 | tr -d \"\\n\" > " + q(f) + " || : > " + q(f) + "' sh " + q(title));
+    return readField(f);
+  }
+
+  << Lowercase file extension of a path (via the char-cell-free shell helper),
+     used to pick the MIME type for an opened file. Empty when there is no dot.
+     Reuses the scalar-field technique. >>
+  String extOf(String path) {
+    if (path == "") return "";
+    String base = osTempDir() + "/sleela-mb-ext";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-mb-ext"; osMakeDir(base); }
+    String dir = base + "/run-" + timeUtcMillis();
+    osMakeDir(dir);
+    if (osIsDir(dir) != 1) return "";
+    String f = dir + "/ext.txt";
+    << Take the text after the last dot of the basename, lowercased; empty when
+       the basename has no dot. $1 is the path (positional). >>
+    osRun("sh -c '"
+      + "p=\"$1\"; b=\"${p##*/}\"; "
+      + "case \"$b\" in *.*) e=\"${b##*.}\";; *) e=\"\";; esac; "
+      + "printf \"%s\" \"$e\" | tr \"A-Z\" \"a-z\" > " + q(f) + " || : > " + q(f) + "' sh " + q(path));
+    return readField(f);
+  }
+
   boolean looksYouTube(String url) { return youtubeId(url) != ""; }
 
   << Platform-aware external open of a URL in the user's browser. Returns true
@@ -322,6 +396,63 @@ class MediaBrowser {
     }
   }
 
+  << Parent directory of a path, via a fixed shell helper (scalar-field read).
+     Used to load the folder of a file chosen in the native file dialog. >>
+  String dirOf(String path) {
+    if (path == "") return "";
+    String base = osTempDir() + "/sleela-mb-dir";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-mb-dir"; osMakeDir(base); }
+    String dir = base + "/run-" + timeUtcMillis();
+    osMakeDir(dir);
+    if (osIsDir(dir) != 1) return "";
+    String f = dir + "/dir.txt";
+    osRun("sh -c 'printf \"%s\" \"$(dirname \"$1\")\" > " + q(f) + " || : > " + q(f) + "' sh " + q(path));
+    return readField(f);
+  }
+
+  << File menu - Open Picture: pop the native file dialog, and if an image was
+     chosen, load its folder into the gallery and page straight to that file so
+     the picture is shown immediately. A chosen video is handed to the external
+     player (SleelaUI decodes no video). >>
+  void openPicture() {
+    String picked = openFileDialog("Open a picture or video");
+    if (picked == "") { setStatus("Open: cancelled (or no zenity/kdialog file picker installed)."); return; }
+    String ext = extOf(picked);
+    String mime = mimeForExt(ext);
+    if (isExternalVideo(mime) || mime == "video/mp4" || mime == "video/quicktime") {
+      << A video file: play it in the system's external player. >>
+      if (openExternally(picked)) setStatus("Opened " + picked + " in the system video player.");
+      else setStatus("Could not launch an external player for " + picked + ".");
+      return;
+    }
+    << An image (or unknown, which the Image widget will simply caption): load
+       the containing folder so Prev/Next browse its siblings, then jump to the
+       chosen file. >>
+    String folder = dirOf(picked);
+    int found = folder != "" ? scanFolder(folder) : 0;
+    if (found > 0) {
+      folderLoaded = true;
+      folderPath = folder;
+      galleryCount = found;
+      << Page to the picked file by matching its basename. >>
+      galleryIndex = 0;
+      int i = 0;
+      while (i < found) {
+        String nm = scanPathAt(i);
+        if (nm == picked) { galleryIndex = i; i = found; } else { i = i + 1; }
+      }
+      showPicture();
+      setStatus("Opened " + picked + " (" + intToStr(found) + " image(s) in folder).");
+    } else {
+      << Single file with no scannable folder: show it directly in the gallery. >>
+      folderLoaded = false;
+      if (thumb >= 0) uiWidgetSetText(thumb, picked);
+      if (locationInput >= 0) uiWidgetSetText(locationInput, picked);
+      setStatus("Opened " + picked + ".");
+    }
+  }
+
   << A glass media theme shared with the project's other SleelaUI windows. >>
   int glassTheme() {
     int t = uiThemePreset(THEME_CUSTOM);
@@ -365,6 +496,14 @@ class MediaBrowser {
     if (galleryCaption >= 0) {
       uiWidgetSetText(galleryCaption, "picture " + intToStr(galleryIndex + 1) + " / " +
         intToStr(galleryCount) + "   -   " + name);
+    }
+    << Point the gallery Image widget at the real on-disk file so SleelaUI
+       decodes and renders the actual picture. For a loaded folder that is the
+       absolute scan path; the built-in demo set has no real files, so the
+       widget shows its caption-tile fallback (the filename). >>
+    if (thumb >= 0) {
+      String imgSrc = folderLoaded ? scanPathAt(galleryIndex) : name;
+      uiWidgetSetText(thumb, imgSrc);
     }
     if (locationInput >= 0) uiWidgetSetText(locationInput, picturePath(galleryIndex));
     setStatus("Browsing " + name + " (" + src + " image, codec gate passed)");
@@ -597,7 +736,9 @@ class MediaBrowser {
     uiWidgetMargin(gBox, 12, 12, 12, 12);
     uiWidgetExpand(gBox, 1, 1);
     uiLabel(gBox, "PICTURE GALLERY  (image/jpeg - png - gif)");
-    int thumb = uiImage(gBox, "beach-sunrise.jpg", 420, 300);
+    << Bound to the instance field so showPicture() can swap its source to the
+       current file and the Image widget renders the real decoded picture. >>
+    thumb = uiImage(gBox, "beach-sunrise.jpg", 420, 300);
     uiWidgetExpand(thumb, 1, 1);
     galleryCaption = uiLabel(gBox, "picture 1 / 5   -   beach-sunrise.jpg");
     int gRow = uiBox(gBox, 1, 8);
@@ -654,8 +795,7 @@ class MediaBrowser {
     uiBadge(crow, "image/gif ok");
     uiBadge(crow, "video/mp4 ok");
     uiBadge(crow, "video/quicktime ok");
-    int hidden = uiBadge(crow, "video/avi hidden");
-    uiWidgetDestructive(hidden, 1);
+    uiBadge(crow, "video/avi -> external player");
     uiSpacer(crow);
 
     int status = uiStatusBar(root);
@@ -695,7 +835,7 @@ class MediaBrowser {
 
         << File menu commands. Open Folder scans the folder named in the
            location bar and switches the gallery to its real images. >>
-        if (uiWidgetTakeActivated(mFileOpen()) == 1) { setStatus("File - Open Picture: type a folder path in the location bar, then Open Folder."); openMenu(-1); }
+        if (uiWidgetTakeActivated(mFileOpen()) == 1) { openMenu(-1); openPicture(); }
         if (uiWidgetTakeActivated(mFileOpenFolder()) == 1) {
           String path = locationInput >= 0 ? uiWidgetGetText(locationInput) : "";
           if (path == null) path = "";

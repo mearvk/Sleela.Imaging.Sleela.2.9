@@ -47,6 +47,13 @@ rasterizer with no display server — produced headlessly from
 - **Navigation header**: Prev / Next, a location field that triples as the
   folder-path input, the current-file display, and the YouTube URL field, plus
   a `local - browser handoff` badge.
+- **Native file-open dialog**: **File → Open Picture…** opens the real desktop
+  file chooser (`zenity` on GNOME/GTK, `kdialog` on KDE) via the VM `osRun`
+  built-in and reads the chosen path back with the scalar-field technique. An
+  image is shown immediately (its folder is loaded so Prev/Next browse the
+  siblings and the gallery jumps to the picked file); a video file is handed to
+  the system player. If neither picker is installed the dialog reports that and
+  nothing changes. The chooser only *learns* a path — it never writes media.
 - **Real on-disk folder browsing**: type a folder path in the location bar and
   choose **File - Open Folder**. The gallery enumerates the real image files in
   that directory (jpg/jpeg/png/gif/bmp/webp/tiff/tif, case-insensitive) and
@@ -55,11 +62,22 @@ rasterizer with no display server — produced headlessly from
   deletes media, and never follows symbolic links. It uses the VM `osRun`
   built-in with fixed POSIX commands and the scalar-field technique of
   `src/ImagingFileSystem.sleela`.
-- **Picture gallery**: an image canvas with a paging caption and Previous /
-  Next controls; the location bar updates to the current file as you browse.
+- **Picture gallery (real pixels)**: the gallery shows the **actual decoded
+  picture**, not a placeholder — the SleelaUI `Image` widget decodes the
+  current file (JPEG always; PNG when the toolkit links libpng) and renders it
+  aspect-fit into the card. Paging with Previous / Next swaps the Image source
+  to the next file; the location bar tracks the current file. (Requires a
+  SleelaUI build with real-image rendering — syntax-2.9 toolkit from
+  mearvk/SLeeLa.)
 - **Video player**: a video canvas with full, **live** transport — Play /
   Pause / Stop, a seek slider that drives the position readout and the playback
   level bar, and a volume slider with a live `volume NN%` readout.
+- **AVI (external-player handoff)**: `.avi` / `video/x-msvideo` is a *recognized*
+  type, shown in the codec registry as `video/avi → external player`. SleelaUI
+  has no in-app video decoder or surface, so — exactly like a YouTube stream —
+  an AVI (or MP4 / MOV) chosen via **File → Open** is played by handing the
+  file to the system's external player (`xdg-open` / `open` / `cmd start`). The
+  program never decodes or fakes video frames in the canvas.
 - **YouTube streaming (browser handoff)**: paste a YouTube link in the location
   bar and choose **Stream → Load URL**. The browser extracts the 11-character
   video id (recognizing `watch?v=`, `youtu.be/`, `/embed/`, and `/shorts/`
