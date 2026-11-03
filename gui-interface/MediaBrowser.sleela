@@ -668,10 +668,22 @@ class MediaBrowser {
     syncTransport();
     print("Window shown. Gallery and transport controls change the view and player state.");
 
-    << ---- Interactive event loop: pump, poll sliders, then poll controls. ---- >>
+    << ---- Interactive event loop: pump, poll sliders, then poll controls.
+       The loop ends only on an explicit quit (File - Quit) or when the user
+       closes the window (uiWindowClosed, the WM close / X button) -- NOT on a
+       single negative uiAppPump result. uiAppPump dispatches events once and
+       returns the dispatched-event count, or a negative error code; treating
+       an occasional negative as "quit" made the window appear to exit right
+       after loading if the backend returned a transient error on a frame.
+       A persistent failure (window gone) is caught by the uiWindowClosed
+       check, so the loop still terminates cleanly. ---- >>
     while (running) {
-      int dispatched = uiAppPump(app, 1);
-      if (dispatched < 0) { running = false; }
+      << Dispatch one batch of host events. The return (dispatched count, or a
+         negative error code) is intentionally not used as a quit signal; the
+         window-close check below is the authoritative exit condition. >>
+      uiAppPump(app, 1);
+      << The user closed the window (X button): end the loop cleanly. >>
+      if (uiWindowClosed(window) == 1) { running = false; }
       else {
         pollSliders();
 
