@@ -116,6 +116,8 @@ class MediaBrowser {
   boolean running = false;
   << Last seek position read from the slider, in whole seconds. >>
   int lastPos = 0;
+  << DIAGNOSTIC (temporary): frame counter for the event-loop trace. >>
+  int loopFrame = 0;
 
   << YouTube stream state. streamActive is true while the location bar holds a
      recognized YouTube URL; streamId is the extracted 11-char video id and
@@ -667,6 +669,10 @@ class MediaBrowser {
     showPicture();
     syncTransport();
     print("Window shown. Gallery and transport controls change the view and player state.");
+    << DIAGNOSTIC (temporary): confirm state at loop entry. >>
+    print("[loop] entering: running=" + (running ? "true" : "false")
+      + " app=" + intToStr(app) + " window=" + intToStr(window)
+      + " backend=" + uiBackendName(uiBackend()));
 
     << ---- Interactive event loop: pump, poll sliders, then poll controls.
        The loop ends only on an explicit quit (File - Quit) or when the user
@@ -681,9 +687,20 @@ class MediaBrowser {
       << Dispatch one batch of host events. The return (dispatched count, or a
          negative error code) is intentionally not used as a quit signal; the
          window-close check below is the authoritative exit condition. >>
-      uiAppPump(app, 1);
+      int dispatched = uiAppPump(app, 1);
+      int closedNow = uiWindowClosed(window);
+      << DIAGNOSTIC (temporary): trace the first few frames so an early exit can
+         be explained from the console -- what uiAppPump returned and whether the
+         window reports itself closed. Remove once the exit cause is confirmed. >>
+      if (loopFrame < 8) {
+        print("[loop] frame=" + intToStr(loopFrame)
+          + " pump=" + intToStr(dispatched)
+          + " windowClosed=" + intToStr(closedNow)
+          + " running=" + (running ? "true" : "false"));
+        loopFrame = loopFrame + 1;
+      }
       << The user closed the window (X button): end the loop cleanly. >>
-      if (uiWindowClosed(window) == 1) { running = false; }
+      if (closedNow == 1) { running = false; }
       else {
         pollSliders();
 
@@ -744,6 +761,11 @@ class MediaBrowser {
         if (uiWidgetTakeActivated(btnStreamOpen) == 1) { openStream(); }
       }
     }
+
+    << DIAGNOSTIC (temporary): report why the loop ended. >>
+    print("[loop] exited after " + intToStr(loopFrame) + " traced frame(s): "
+      + "running=" + (running ? "true" : "false")
+      + " windowClosed=" + intToStr(uiWindowClosed(window)));
 
     uiAppDestroy(app); app = -1;
     if (theme >= 0) uiThemeDestroy(theme);
