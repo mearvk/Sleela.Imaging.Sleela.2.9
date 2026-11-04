@@ -50,14 +50,31 @@ class ScreenshotMediaBrowser {
     uiWindowSetBuffering(window, 2);
     int root = uiWindowRoot(window);
 
-    << Menubar strip (dropdown panels collapsed, as at rest). >>
+    << Menubar strip. Mirrors MediaBrowser: four menu buttons, and each menu is
+       a floating, fixed-width, raised dropdown (uiPopupCreate) centered on its
+       button with a teardrop caret (uiPopupAnchorTo). For the screenshot the
+       File menu is shown OPEN so the capture includes the new dropdown look. >>
     int menuStrip = uiBox(root, 1, 4);
     uiWidgetMargin(menuStrip, 4, 8, 4, 8);
-    uiButton(menuStrip, "File");
+    int bFile = uiButton(menuStrip, "File");
     uiButton(menuStrip, "View");
     uiButton(menuStrip, "Stream");
     uiButton(menuStrip, "Help");
     uiSpacer(menuStrip);
+
+    << File dropdown (open for the capture): floating, centered under its button
+       with a teardrop, fixed 230px width, items specific to the File menu. >>
+    int filePanel = uiPopupCreate(root);
+    uiWidgetSizeRequest(filePanel, 230, 0);
+    uiPopupAnchorTo(filePanel, bFile);
+    int fBox = uiBox(filePanel, 0, 2);
+    uiWidgetMargin(fBox, 6, 8, 6, 8);
+    uiButton(fBox, "Open Picture...");
+    uiButton(fBox, "Open Folder...");
+    uiButton(fBox, "Media Information");
+    uiSeparator(fBox, 0);
+    uiButton(fBox, "Quit");
+    uiPopupSetOpen(filePanel, 1);
 
     << Navigation header. The location bar holds a recognized YouTube URL to
        show the stream state. >>
@@ -149,8 +166,7 @@ class ScreenshotMediaBrowser {
     uiBadge(crow, "image/gif ok");
     uiBadge(crow, "video/mp4 ok");
     uiBadge(crow, "video/quicktime ok");
-    int hidden = uiBadge(crow, "video/avi hidden");
-    uiWidgetDestructive(hidden, 1);
+    uiBadge(crow, "video/avi -> external player");
     uiSpacer(crow);
 
     int status = uiStatusBar(root);
