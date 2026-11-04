@@ -59,42 +59,63 @@ class MediaBrowser {
   int seekSlider = -1; int volumeSlider = -1; int playbackLevel = -1;
   int btnPlay = -1; int btnPause = -1; int btnStop = -1;
   int btnPrev = -1; int btnNext = -1; int galleryCaption = -1;
+  << Gallery image widget: its source is updated to the current file path so the
+     SleelaUI Image widget decodes and shows the real picture (jpg/jpeg/png). >>
+  int thumb = -1;
 
-  << Menubar strip and its dropdown panels (built from existing ui* widgets).
-     The 19 menu widget handles are packed into one first-class int[] array so
-     the class stays within the VM's 64-field-per-layout limit. Each handle is
-     reached through a named accessor (mFileBtn(), mFilePanel(), ...) that
-     returns the stored handle for a fixed index, so every call site reads just
-     as the named fields did. The index legend (what each slot holds) is:
-       0 File button     1 File panel    2 Open Picture   3 Open Folder
-       4 Media Info      5 Quit          6 View button    7 View panel
-       8 Picture Gallery 9 Video Player  10 Help button    11 Help panel
-       12 Media Guide    13 About        14 Stream button  15 Stream panel
-       16 Load URL       17 Open browser 18 Clear stream >>
+  << Menubar strip and its dropdown menus. Each top-level menu (File, View,
+     Stream, Help) owns a FLOATING popup panel (uiPopupCreate) that is anchored
+     under its own button, sized to a fixed reasonable width, and painted as a
+     raised 3D card with a drop shadow by the toolkit. Only one is open at a
+     time. Every menu's items are specific to that menu (no shared children).
+     All handles are packed into one int[] so the class stays under the VM's
+     64-field-per-layout cap; named accessors (methods, no layout cost) read
+     each slot. Index legend:
+       -- top-level buttons --
+       0 File btn     1 View btn     2 Stream btn    3 Help btn
+       -- File menu (panel 10) --
+       10 panel  11 Open Picture  12 Open Folder  13 Media Information  14 Quit
+       -- View menu (panel 20) --
+       20 panel  21 Picture Gallery  22 Video Player  23 Next Picture
+       24 Previous Picture          25 Fit to Window
+       -- Stream menu (panel 30) --
+       30 panel  31 Load URL  32 Open in Browser  33 Clear Stream
+       -- Help menu (panel 40) --
+       40 panel  41 Media Guide  42 Keyboard Shortcuts  43 About MediaBrowser >>
   int openMenuIndex = -1;
   int[] menuH;
 
-  << Typed accessors for the packed menu handles (methods, not fields, so they
-     cost no layout slots). Each returns the live widget handle for its slot. >>
+  << Fixed dropdown width (px): a reasonable rectangle, never the whole GUI. >>
+  int MENU_WIDTH = 230;
+
+  << Typed accessors for the packed menu handles (methods cost no layout slot). >>
   int mFileBtn() { return menuH[0]; }
-  int mFilePanel() { return menuH[1]; }
-  int mFileOpen() { return menuH[2]; }
-  int mFileOpenFolder() { return menuH[3]; }
-  int mFileInfo() { return menuH[4]; }
-  int mFileQuit() { return menuH[5]; }
-  int mViewBtn() { return menuH[6]; }
-  int mViewPanel() { return menuH[7]; }
-  int mViewGallery() { return menuH[8]; }
-  int mViewPlayer() { return menuH[9]; }
-  int mHelpBtn() { return menuH[10]; }
-  int mHelpPanel() { return menuH[11]; }
-  int mHelpGuide() { return menuH[12]; }
-  int mHelpAbout() { return menuH[13]; }
-  int mStreamBtn() { return menuH[14]; }
-  int mStreamPanel() { return menuH[15]; }
-  int mStreamLoad() { return menuH[16]; }
-  int mStreamOpen() { return menuH[17]; }
-  int mStreamClear() { return menuH[18]; }
+  int mViewBtn() { return menuH[1]; }
+  int mStreamBtn() { return menuH[2]; }
+  int mHelpBtn() { return menuH[3]; }
+
+  int mFilePanel() { return menuH[10]; }
+  int mFileOpen() { return menuH[11]; }
+  int mFileOpenFolder() { return menuH[12]; }
+  int mFileInfo() { return menuH[13]; }
+  int mFileQuit() { return menuH[14]; }
+
+  int mViewPanel() { return menuH[20]; }
+  int mViewGallery() { return menuH[21]; }
+  int mViewPlayer() { return menuH[22]; }
+  int mViewNext() { return menuH[23]; }
+  int mViewPrev() { return menuH[24]; }
+  int mViewFit() { return menuH[25]; }
+
+  int mStreamPanel() { return menuH[30]; }
+  int mStreamLoad() { return menuH[31]; }
+  int mStreamOpen() { return menuH[32]; }
+  int mStreamClear() { return menuH[33]; }
+
+  int mHelpPanel() { return menuH[40]; }
+  int mHelpGuide() { return menuH[41]; }
+  int mHelpShortcuts() { return menuH[42]; }
+  int mHelpAbout() { return menuH[43]; }
 
   << Picture gallery state. When no on-disk folder is loaded the browser pages
      through a small fixed demo set; a real-folder scan (inlined below, the same
@@ -156,7 +177,29 @@ class MediaBrowser {
      The UI never offers media it cannot play. >>
   boolean canPlayType(String mime) {
     return mime == "image/jpeg" || mime == "image/png" || mime == "image/gif" ||
-      mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav";
+      mime == "video/mp4" || mime == "video/quicktime" || mime == "audio/wav" ||
+      mime == "video/x-msvideo";
+  }
+
+  << AVI is a recognized video container but SleelaUI has no in-app video
+     decoder or surface, so (like YouTube streams) AVI is played by handing the
+     file to the system's external player rather than decoding it in-app. This
+     reports whether a type is a recognized external-playback video. >>
+  boolean isExternalVideo(String mime) {
+    return mime == "video/x-msvideo";
+  }
+
+  << Map a lowercase file extension to a MIME type for the codec gate. Unknown
+     extensions return "" (treated as not playable). >>
+  String mimeForExt(String ext) {
+    if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+    if (ext == "png") return "image/png";
+    if (ext == "gif") return "image/gif";
+    if (ext == "mp4" || ext == "m4v") return "video/mp4";
+    if (ext == "mov") return "video/quicktime";
+    if (ext == "avi") return "video/x-msvideo";
+    if (ext == "wav") return "audio/wav";
+    return "";
   }
 
   << ---- Inlined read-only folder scanner (mirrors gui-interface/GalleryScanner.sleela).
@@ -254,6 +297,55 @@ class MediaBrowser {
     return readField(f);
   }
 
+  << ---- Native file-open dialog ----
+     SleelaUI ships no file-chooser widget, so the File menu opens the real
+     native desktop picker by launching zenity (GNOME/GTK) or kdialog (KDE)
+     through the VM osRun built-in, and reads the chosen path back from a scalar
+     field file (no trailing newline) -- the same fixed-POSIX, scalar-field
+     technique the folder scanner uses. Returns the selected absolute path, or
+     "" if the user cancelled or no picker is installed. Read-only: it only
+     learns a path; it never creates, moves, or deletes media. >>
+  String openFileDialog(String title) {
+    String base = osTempDir() + "/sleela-mb-pick";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-mb-pick"; osMakeDir(base); }
+    String dir = base + "/run-" + timeUtcMillis();
+    osMakeDir(dir);
+    if (osIsDir(dir) != 1) return "";
+    String f = dir + "/path.txt";
+    << $1 is the dialog title, passed positionally so it can never alter the
+       command structure. Try zenity first, then kdialog; the chosen path is
+       written with no trailing newline, empty on cancel or no picker. >>
+    osRun("sh -c '"
+      + "if command -v zenity >/dev/null 2>&1; then "
+      + "  zenity --file-selection --title=\"$1\" 2>/dev/null; "
+      + "elif command -v kdialog >/dev/null 2>&1; then "
+      + "  kdialog --getopenfilename \"$HOME\" --title \"$1\" 2>/dev/null; "
+      + "fi | head -1 | tr -d \"\\n\" > " + q(f) + " || : > " + q(f) + "' sh " + q(title));
+    return readField(f);
+  }
+
+  << Lowercase file extension of a path (via the char-cell-free shell helper),
+     used to pick the MIME type for an opened file. Empty when there is no dot.
+     Reuses the scalar-field technique. >>
+  String extOf(String path) {
+    if (path == "") return "";
+    String base = osTempDir() + "/sleela-mb-ext";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-mb-ext"; osMakeDir(base); }
+    String dir = base + "/run-" + timeUtcMillis();
+    osMakeDir(dir);
+    if (osIsDir(dir) != 1) return "";
+    String f = dir + "/ext.txt";
+    << Take the text after the last dot of the basename, lowercased; empty when
+       the basename has no dot. $1 is the path (positional). >>
+    osRun("sh -c '"
+      + "p=\"$1\"; b=\"${p##*/}\"; "
+      + "case \"$b\" in *.*) e=\"${b##*.}\";; *) e=\"\";; esac; "
+      + "printf \"%s\" \"$e\" | tr \"A-Z\" \"a-z\" > " + q(f) + " || : > " + q(f) + "' sh " + q(path));
+    return readField(f);
+  }
+
   boolean looksYouTube(String url) { return youtubeId(url) != ""; }
 
   << Platform-aware external open of a URL in the user's browser. Returns true
@@ -322,6 +414,63 @@ class MediaBrowser {
     }
   }
 
+  << Parent directory of a path, via a fixed shell helper (scalar-field read).
+     Used to load the folder of a file chosen in the native file dialog. >>
+  String dirOf(String path) {
+    if (path == "") return "";
+    String base = osTempDir() + "/sleela-mb-dir";
+    osMakeDir(base);
+    if (osIsDir(base) != 1) { base = ".sleela-mb-dir"; osMakeDir(base); }
+    String dir = base + "/run-" + timeUtcMillis();
+    osMakeDir(dir);
+    if (osIsDir(dir) != 1) return "";
+    String f = dir + "/dir.txt";
+    osRun("sh -c 'printf \"%s\" \"$(dirname \"$1\")\" > " + q(f) + " || : > " + q(f) + "' sh " + q(path));
+    return readField(f);
+  }
+
+  << File menu - Open Picture: pop the native file dialog, and if an image was
+     chosen, load its folder into the gallery and page straight to that file so
+     the picture is shown immediately. A chosen video is handed to the external
+     player (SleelaUI decodes no video). >>
+  void openPicture() {
+    String picked = openFileDialog("Open a picture or video");
+    if (picked == "") { setStatus("Open: cancelled (or no zenity/kdialog file picker installed)."); return; }
+    String ext = extOf(picked);
+    String mime = mimeForExt(ext);
+    if (isExternalVideo(mime) || mime == "video/mp4" || mime == "video/quicktime") {
+      << A video file: play it in the system's external player. >>
+      if (openExternally(picked)) setStatus("Opened " + picked + " in the system video player.");
+      else setStatus("Could not launch an external player for " + picked + ".");
+      return;
+    }
+    << An image (or unknown, which the Image widget will simply caption): load
+       the containing folder so Prev/Next browse its siblings, then jump to the
+       chosen file. >>
+    String folder = dirOf(picked);
+    int found = folder != "" ? scanFolder(folder) : 0;
+    if (found > 0) {
+      folderLoaded = true;
+      folderPath = folder;
+      galleryCount = found;
+      << Page to the picked file by matching its basename. >>
+      galleryIndex = 0;
+      int i = 0;
+      while (i < found) {
+        String nm = scanPathAt(i);
+        if (nm == picked) { galleryIndex = i; i = found; } else { i = i + 1; }
+      }
+      showPicture();
+      setStatus("Opened " + picked + " (" + intToStr(found) + " image(s) in folder).");
+    } else {
+      << Single file with no scannable folder: show it directly in the gallery. >>
+      folderLoaded = false;
+      if (thumb >= 0) uiWidgetSetText(thumb, picked);
+      if (locationInput >= 0) uiWidgetSetText(locationInput, picked);
+      setStatus("Opened " + picked + ".");
+    }
+  }
+
   << A glass media theme shared with the project's other SleelaUI windows. >>
   int glassTheme() {
     int t = uiThemePreset(THEME_CUSTOM);
@@ -365,6 +514,14 @@ class MediaBrowser {
     if (galleryCaption >= 0) {
       uiWidgetSetText(galleryCaption, "picture " + intToStr(galleryIndex + 1) + " / " +
         intToStr(galleryCount) + "   -   " + name);
+    }
+    << Point the gallery Image widget at the real on-disk file so SleelaUI
+       decodes and renders the actual picture. For a loaded folder that is the
+       absolute scan path; the built-in demo set has no real files, so the
+       widget shows its caption-tile fallback (the filename). >>
+    if (thumb >= 0) {
+      String imgSrc = folderLoaded ? scanPathAt(galleryIndex) : name;
+      uiWidgetSetText(thumb, imgSrc);
     }
     if (locationInput >= 0) uiWidgetSetText(locationInput, picturePath(galleryIndex));
     setStatus("Browsing " + name + " (" + src + " image, codec gate passed)");
@@ -523,44 +680,75 @@ class MediaBrowser {
     int root = uiWindowRoot(window);
 
     << Allocate the packed menu-handle table (see the index legend by the field
-       declaration). Every slot is filled below as its widget is created. >>
-    menuH = new int[19];
+       declaration). Indices are grouped by menu (0-3 buttons, 10-14 File,
+       20-25 View, 30-33 Stream, 40-43 Help), so size to the highest slot + 1.
+       Unused gaps stay at their default and are never referenced. >>
+    menuH = new int[44];
+    int mi = 0;
+    while (mi < 44) { menuH[mi] = -1; mi = mi + 1; }
 
-    << ---- Functional menubar strip and dropdown panels ---- >>
+    << ---- Functional menubar strip ---- >>
     int menuStrip = uiBox(root, 1, 4);
     uiWidgetMargin(menuStrip, 4, 8, 4, 8);
     menuH[0] = uiButton(menuStrip, "File");
-    menuH[6] = uiButton(menuStrip, "View");
-    menuH[14] = uiButton(menuStrip, "Stream");
-    menuH[10] = uiButton(menuStrip, "Help");
+    menuH[1] = uiButton(menuStrip, "View");
+    menuH[2] = uiButton(menuStrip, "Stream");
+    menuH[3] = uiButton(menuStrip, "Help");
     uiSpacer(menuStrip);
 
-    menuH[1] = uiBox(root, 0, 2);
-    uiWidgetMargin(mFilePanel(), 4, 10, 4, 10);
-    menuH[2] = uiButton(mFilePanel(), "Open Picture...");
-    menuH[3] = uiButton(mFilePanel(), "Open Folder...");
-    menuH[4] = uiButton(mFilePanel(), "Media Information");
-    menuH[5] = uiButton(mFilePanel(), "Quit");
-    uiWidgetVisible(mFilePanel(), 0);
+    << Approximate left-edge x of each menu button so its dropdown anchors
+       beneath it. SleelaUI packs left-to-right with a 4px strip margin + ~4px
+       spacing; these are per-button widths tuned to the labels. The toolkit
+       clamps a dropdown that would run off the right edge back on-screen. >>
+    int mx0 = 8;
+    int mx1 = 68;
+    int mx2 = 132;
+    int mx3 = 212;
 
-    menuH[7] = uiBox(root, 0, 2);
-    uiWidgetMargin(mViewPanel(), 4, 10, 4, 10);
-    menuH[8] = uiButton(mViewPanel(), "Picture Gallery");
-    menuH[9] = uiButton(mViewPanel(), "Video Player");
-    uiWidgetVisible(mViewPanel(), 0);
+    << ---- File menu: a floating, fixed-width, raised dropdown ---- >>
+    menuH[10] = uiPopupCreate(root);
+    uiWidgetSizeRequest(mFilePanel(), MENU_WIDTH, 0);
+    uiPopupSetAnchor(mFilePanel(), 1, mx0);
+    int fBox = uiBox(mFilePanel(), 0, 2);
+    uiWidgetMargin(fBox, 6, 8, 6, 8);
+    menuH[11] = uiButton(fBox, "Open Picture...");
+    menuH[12] = uiButton(fBox, "Open Folder...");
+    menuH[13] = uiButton(fBox, "Media Information");
+    uiSeparator(fBox, 0);
+    menuH[14] = uiButton(fBox, "Quit");
 
-    menuH[15] = uiBox(root, 0, 2);
-    uiWidgetMargin(mStreamPanel(), 4, 10, 4, 10);
-    menuH[16] = uiButton(mStreamPanel(), "Load URL from location bar");
-    menuH[17] = uiButton(mStreamPanel(), "Open in browser");
-    menuH[18] = uiButton(mStreamPanel(), "Clear stream");
-    uiWidgetVisible(mStreamPanel(), 0);
+    << ---- View menu ---- >>
+    menuH[20] = uiPopupCreate(root);
+    uiWidgetSizeRequest(mViewPanel(), MENU_WIDTH, 0);
+    uiPopupSetAnchor(mViewPanel(), 1, mx1);
+    int vBox = uiBox(mViewPanel(), 0, 2);
+    uiWidgetMargin(vBox, 6, 8, 6, 8);
+    menuH[21] = uiButton(vBox, "Picture Gallery");
+    menuH[22] = uiButton(vBox, "Video Player");
+    uiSeparator(vBox, 0);
+    menuH[23] = uiButton(vBox, "Next Picture");
+    menuH[24] = uiButton(vBox, "Previous Picture");
+    menuH[25] = uiButton(vBox, "Fit to Window");
 
-    menuH[11] = uiBox(root, 0, 2);
-    uiWidgetMargin(mHelpPanel(), 4, 10, 4, 10);
-    menuH[12] = uiButton(mHelpPanel(), "Media Guide");
-    menuH[13] = uiButton(mHelpPanel(), "About MediaBrowser");
-    uiWidgetVisible(mHelpPanel(), 0);
+    << ---- Stream menu ---- >>
+    menuH[30] = uiPopupCreate(root);
+    uiWidgetSizeRequest(mStreamPanel(), MENU_WIDTH, 0);
+    uiPopupSetAnchor(mStreamPanel(), 1, mx2);
+    int sBox = uiBox(mStreamPanel(), 0, 2);
+    uiWidgetMargin(sBox, 6, 8, 6, 8);
+    menuH[31] = uiButton(sBox, "Load URL from Location Bar");
+    menuH[32] = uiButton(sBox, "Open in Browser");
+    menuH[33] = uiButton(sBox, "Clear Stream");
+
+    << ---- Help menu ---- >>
+    menuH[40] = uiPopupCreate(root);
+    uiWidgetSizeRequest(mHelpPanel(), MENU_WIDTH, 0);
+    uiPopupSetAnchor(mHelpPanel(), 1, mx3);
+    int hBox = uiBox(mHelpPanel(), 0, 2);
+    uiWidgetMargin(hBox, 6, 8, 6, 8);
+    menuH[41] = uiButton(hBox, "Media Guide");
+    menuH[42] = uiButton(hBox, "Keyboard Shortcuts");
+    menuH[43] = uiButton(hBox, "About MediaBrowser");
 
     << ---- Chrome: navigation header ---- >>
     int header = uiHeaderBar(root);
@@ -597,7 +785,9 @@ class MediaBrowser {
     uiWidgetMargin(gBox, 12, 12, 12, 12);
     uiWidgetExpand(gBox, 1, 1);
     uiLabel(gBox, "PICTURE GALLERY  (image/jpeg - png - gif)");
-    int thumb = uiImage(gBox, "beach-sunrise.jpg", 420, 300);
+    << Bound to the instance field so showPicture() can swap its source to the
+       current file and the Image widget renders the real decoded picture. >>
+    thumb = uiImage(gBox, "beach-sunrise.jpg", 420, 300);
     uiWidgetExpand(thumb, 1, 1);
     galleryCaption = uiLabel(gBox, "picture 1 / 5   -   beach-sunrise.jpg");
     int gRow = uiBox(gBox, 1, 8);
@@ -654,8 +844,7 @@ class MediaBrowser {
     uiBadge(crow, "image/gif ok");
     uiBadge(crow, "video/mp4 ok");
     uiBadge(crow, "video/quicktime ok");
-    int hidden = uiBadge(crow, "video/avi hidden");
-    uiWidgetDestructive(hidden, 1);
+    uiBadge(crow, "video/avi -> external player");
     uiSpacer(crow);
 
     int status = uiStatusBar(root);
@@ -695,7 +884,7 @@ class MediaBrowser {
 
         << File menu commands. Open Folder scans the folder named in the
            location bar and switches the gallery to its real images. >>
-        if (uiWidgetTakeActivated(mFileOpen()) == 1) { setStatus("File - Open Picture: type a folder path in the location bar, then Open Folder."); openMenu(-1); }
+        if (uiWidgetTakeActivated(mFileOpen()) == 1) { openMenu(-1); openPicture(); }
         if (uiWidgetTakeActivated(mFileOpenFolder()) == 1) {
           String path = locationInput >= 0 ? uiWidgetGetText(locationInput) : "";
           if (path == null) path = "";
@@ -712,6 +901,9 @@ class MediaBrowser {
         << View menu commands. >>
         if (uiWidgetTakeActivated(mViewGallery()) == 1) { setStatus("View - Picture Gallery"); showPicture(); openMenu(-1); }
         if (uiWidgetTakeActivated(mViewPlayer()) == 1) { setStatus("View - Video Player"); openMenu(-1); }
+        if (uiWidgetTakeActivated(mViewNext()) == 1) { nextPicture(); openMenu(-1); }
+        if (uiWidgetTakeActivated(mViewPrev()) == 1) { prevPicture(); openMenu(-1); }
+        if (uiWidgetTakeActivated(mViewFit()) == 1) { setStatus("View - Fit to Window: the gallery image scales to fit its card."); openMenu(-1); }
 
         << Stream (YouTube) menu commands. Load reads the location bar; Open
            hands the recognized video to the browser; Clear restores the local
@@ -727,6 +919,7 @@ class MediaBrowser {
 
         << Help menu commands. >>
         if (uiWidgetTakeActivated(mHelpGuide()) == 1) { setStatus("Help - Media Guide: Prev/Next browse, Play/Pause/Stop and the sliders drive playback."); openMenu(-1); }
+        if (uiWidgetTakeActivated(mHelpShortcuts()) == 1) { setStatus("Help - Shortcuts: File-Open picks a file; View pages the gallery; Stream loads a YouTube URL from the location bar."); openMenu(-1); }
         if (uiWidgetTakeActivated(mHelpAbout()) == 1) { setStatus("Help - MediaBrowser " + metaVersion + " by " + metaAuthor); openMenu(-1); }
 
         << Gallery navigation (header buttons and in-card buttons). >>
