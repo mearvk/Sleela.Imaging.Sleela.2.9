@@ -41,9 +41,20 @@ rasterizer with no display server — produced headlessly from
 
 ## Features
 
-- **Menu bar**: File (Open Picture / Open Folder / Media Information / Quit),
-  View (Picture Gallery / Video Player), and Help (Media Guide / About),
-  implemented as a horizontal button strip with collapsible dropdown panels.
+- **Menu bar**: a horizontal button strip — **File**, **View**, **Stream**,
+  **Help** — where each menu opens its *own* floating dropdown, anchored under
+  its button, sized to a fixed reasonable rectangle (not the whole window), and
+  painted as a raised 3D card with a drop shadow. Only one is open at a time,
+  and each menu's items are specific to it:
+  - **File**: Open Picture… · Open Folder… · Media Information · *(—)* · Quit
+  - **View**: Picture Gallery · Video Player · *(—)* · Next Picture · Previous
+    Picture · Fit to Window
+  - **Stream**: Load URL from Location Bar · Open in Browser · Clear Stream
+  - **Help**: Media Guide · Keyboard Shortcuts · About MediaBrowser
+
+  The floating dropdowns use the SleelaUI `uiPopupCreate` overlay with
+  `uiPopupSetAnchor` (top-left, under the button) and a fixed `uiWidgetSizeRequest`
+  width — so they no longer stack as one full-width band.
 - **Navigation header**: Prev / Next, a location field that triples as the
   folder-path input, the current-file display, and the YouTube URL field, plus
   a `local - browser handoff` badge.
