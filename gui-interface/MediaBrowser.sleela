@@ -696,19 +696,15 @@ class MediaBrowser {
     menuH[3] = uiButton(menuStrip, "Help");
     uiSpacer(menuStrip);
 
-    << Approximate left-edge x of each menu button so its dropdown anchors
-       beneath it. SleelaUI packs left-to-right with a 4px strip margin + ~4px
-       spacing; these are per-button widths tuned to the labels. The toolkit
-       clamps a dropdown that would run off the right edge back on-screen. >>
-    int mx0 = 8;
-    int mx1 = 68;
-    int mx2 = 132;
-    int mx3 = 212;
+    << Each dropdown is anchored to ITS OWN menu button with uiPopupAnchorTo: the
+       toolkit centers the panel horizontally on the button's real laid-out rect
+       (exact, not estimated) and draws a centered teardrop caret pointing up at
+       the button. >>
 
     << ---- File menu: a floating, fixed-width, raised dropdown ---- >>
     menuH[10] = uiPopupCreate(root);
     uiWidgetSizeRequest(mFilePanel(), MENU_WIDTH, 0);
-    uiPopupSetAnchor(mFilePanel(), 1, mx0);
+    uiPopupAnchorTo(mFilePanel(), mFileBtn());
     int fBox = uiBox(mFilePanel(), 0, 2);
     uiWidgetMargin(fBox, 6, 8, 6, 8);
     menuH[11] = uiButton(fBox, "Open Picture...");
@@ -720,7 +716,7 @@ class MediaBrowser {
     << ---- View menu ---- >>
     menuH[20] = uiPopupCreate(root);
     uiWidgetSizeRequest(mViewPanel(), MENU_WIDTH, 0);
-    uiPopupSetAnchor(mViewPanel(), 1, mx1);
+    uiPopupAnchorTo(mViewPanel(), mViewBtn());
     int vBox = uiBox(mViewPanel(), 0, 2);
     uiWidgetMargin(vBox, 6, 8, 6, 8);
     menuH[21] = uiButton(vBox, "Picture Gallery");
@@ -733,7 +729,7 @@ class MediaBrowser {
     << ---- Stream menu ---- >>
     menuH[30] = uiPopupCreate(root);
     uiWidgetSizeRequest(mStreamPanel(), MENU_WIDTH, 0);
-    uiPopupSetAnchor(mStreamPanel(), 1, mx2);
+    uiPopupAnchorTo(mStreamPanel(), mStreamBtn());
     int sBox = uiBox(mStreamPanel(), 0, 2);
     uiWidgetMargin(sBox, 6, 8, 6, 8);
     menuH[31] = uiButton(sBox, "Load URL from Location Bar");
@@ -743,7 +739,7 @@ class MediaBrowser {
     << ---- Help menu ---- >>
     menuH[40] = uiPopupCreate(root);
     uiWidgetSizeRequest(mHelpPanel(), MENU_WIDTH, 0);
-    uiPopupSetAnchor(mHelpPanel(), 1, mx3);
+    uiPopupAnchorTo(mHelpPanel(), mHelpBtn());
     int hBox = uiBox(mHelpPanel(), 0, 2);
     uiWidgetMargin(hBox, 6, 8, 6, 8);
     menuH[41] = uiButton(hBox, "Media Guide");
